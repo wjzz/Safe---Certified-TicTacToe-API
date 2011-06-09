@@ -14,7 +14,8 @@ open import Relation.Nullary
 open import Relation.Binary
 open import Relation.Binary.PropositionalEquality
 
-{- BASE IMPORT Data.Nat.Theorems -}
+{- BASE IMPORT Data.Nat.Theorems  -}
+{- BASE IMPORT Data.List.Theorems -}
 
 --------------------
 -- the color type
@@ -57,7 +58,7 @@ allMovesValid P31 = ∈-drop (∈-drop (∈-drop (∈-drop (∈-drop (∈-drop �
 allMovesValid P32 = ∈-drop (∈-drop (∈-drop (∈-drop (∈-drop (∈-drop (∈-drop ∈-take))))))
 allMovesValid P33 = ∈-drop (∈-drop (∈-drop (∈-drop (∈-drop (∈-drop (∈-drop (∈-drop ∈-take)))))))
 
--- decidable equality
+-- decidable equality on moves
 
 _==_ : (m1 m2 : Move) → Dec (m1 ≡ m2)
 P11 == P11 = yes refl
@@ -185,8 +186,8 @@ record GameInterface : Set₁ where
     starting-player  : currentPlayer emptyBoard ≡ X
     no-undo-empty    : canUndo? emptyBoard      ≡ nothing
 
-    valid-possible-l : ∀ {b m} → isMovePossible? b m ≡ true → m ∈ validMoves b
-    valid-possible-r : ∀ {b m} → m ∈ validMoves b           → isMovePossible? b m ≡ true
+    valid-possible-l : ∀ (b : Board) (m : Move) → isMovePossible? b m ≡ true → m ∈ validMoves b
+    valid-possible-r : ∀ (b : Board) (m : Move) → m ∈ validMoves b → isMovePossible? b m ≡ true
 
     undo-make-move   : ∀ {b b' m} → (vld : m ∈ validMoves b) → makeMove b m vld ≡ inj₁ b' 
                                   → ∃ (λ undoableBoard → (canUndo? b' ≡ just undoableBoard) × (undo undoableBoard ≡ b))
@@ -206,19 +207,19 @@ record GameInterface : Set₁ where
   undo? {B} = canUndo?
   undo? {F} = λ f → just (undoFin f)
 
-------------------------------------------------------------------------------------------------------------------
---  An implementation of the TicTacToe game system that will reify the API and provide many static guarantress  --
-------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------
+--  An implementation of the TicTacToe game system that will reify the API and provide many static guarantees  --
+-----------------------------------------------------------------------------------------------------------------
 
 module GameImplementation where
   private
 
-    --------------------------------------------------------------
+    -----------------------------------------------------------------
     -- the moves type
     --
-    -- A list of moves augmented with the color of player to move 
+    -- A list of moves augmented with the color of the player to move 
     -- and the number of moves already played
-    --------------------------------------------------------------
+    -----------------------------------------------------------------
 
     data Moves : (currPlayer : Color) → (n : ℕ) → Set where
       []  : Moves X 0
@@ -299,7 +300,9 @@ module GameImplementation where
     movesByColor X m = xMoves m
     movesByColor O m = oMoves m
 
-    -- winning positions
+    -------------------------
+    --  winning positions  --
+    -------------------------
 
     data WonC : forall {c n} → (winner : Color) (ms : Moves c n) → Set where
       wonC : ∀ {c n winner} → (m : Moves c n) → (winning : List Move) →
@@ -356,12 +359,23 @@ module GameImplementation where
                                   → (dist : distinct ms)           -- all moves distinct
                                   → WorkerBoard
   
+    -- basic queries
+
+    wMoves : WorkerBoard → ∃₂ Moves
+    wMoves (worker {c} {n} n≤9 ms dist) = c , n , ms
+
     wMovesNo : WorkerBoard → ℕ
     wMovesNo (worker {c} {n} n≤9 ms dist) = n
 
     wIsEmpty : WorkerBoard → Bool
     wIsEmpty (worker n≤9 [] dist)       = true
     wIsEmpty (worker n≤9 (ms ▸ m) dist) = false
+
+    noWinnerW : WorkerBoard → Set
+    noWinnerW (worker n≤9 ms dist) = noWinner ms
+
+    wonW : Color → WorkerBoard → Set
+    wonW c (worker n≤9 ms dist) = WonC c ms
 
     ----------------------
     --  the Board type  --
@@ -379,6 +393,9 @@ module GameImplementation where
 
     -- most basic queries
 
+    moves : Board → ∃₂ Moves
+    moves (goodBoard {c} {n} n<9 ms dist noWin) = c , n , ms
+
     emptyBoard : Board
     emptyBoard = goodBoard (s≤s z≤n) [] dist-nil (lem-won-empty X , lem-won-empty O)
 
@@ -392,6 +409,12 @@ module GameImplementation where
     currentPlayer : Board → Color
     currentPlayer (goodBoard {c} {n} y ms y' _) = c
 
+    noWinnerB : Board → Set
+    noWinnerB (goodBoard n<9 ms dist noWin) = noWinner ms
+
+    wonB : Color → Board → Set
+    wonB c (goodBoard n<9 ms dist noWin) = WonC c ms
+
     -- conversion to worker
 
     toWorker : Board → WorkerBoard
@@ -400,42 +423,74 @@ module GameImplementation where
     toWorker-valid : ∀ (b : Board) → movesNo b ≡ wMovesNo (toWorker b)
     toWorker-valid (goodBoard n<9 ms dist noWin) = refl
 
-    -- checking if there is a winner
-
-    wonByColor : Color → Board → Bool
-    wonByColor c (goodBoard n<9 ms dist noWin) with wonDec c ms
-    ... | yes p = true
-    ... | no ¬p = false
-
-    data Won : (c : Color) (b : Board) → Set where
-      won : {c : Color} {b : Board} → wonByColor c b ≡ true → Won c b
-
-    data FinishedBoard : Set where
-      draw : (b : Board)             → movesNo b ≡ 9 → FinishedBoard
-      win  : (c : Color) (b : Board) → Won c b       → FinishedBoard
-
-    getResult : FinishedBoard → Result
-    getResult (draw b y)  = Draw
-    getResult (win c b y) = Win c
+    ----------------------------------------
+    --  valid moves and their properties  --
+    ----------------------------------------
 
     validMoves : Board → List Move
-    validMoves b = [] -- TO FIX!!
+    validMoves (goodBoard n<9 ms dist noWin) = removeDec allMoves (λ move → member′ move ms)
 
-    -- the code below is totally wrong, we need to add the move m before any other matching!!!
-    -- TO FIX!!
+    validMoves-distinct : ∀ {c n m ms n<9 dist noWin} → m ∈ validMoves (goodBoard {c} {n} n<9 ms dist noWin) → m ∉′ ms
+    validMoves-distinct {c} {n} {m} {ms} m∈valid m∈ms with removeDec-valid-rev allMoves (λ move → member′ move ms) m m∈valid
+    validMoves-distinct m∈valid m∈ms | _ , ¬Pa  = ¬Pa m∈ms
+
+    validMoves-distinct-rev : ∀ {c n m ms n<9 dist noWin} → m ∉′ ms → m ∈ validMoves (goodBoard {c} {n} n<9 ms dist noWin) 
+    validMoves-distinct-rev {c} {n} {m} {ms} m∉ms = removeDec-valid allMoves (λ move → member′ move ms) m m∉ms (allMovesValid m)
+
+    isMovePossible? : Board → Move → Bool
+    isMovePossible? b m with member m (validMoves b) _==_
+    isMovePossible? b m | yes p = true
+    isMovePossible? b m | no ¬p = false
+
+    -- relative validness of two ways to generate valid moves
+
+    valid-possible-l : ∀ (b : Board) → (m : Move) → isMovePossible? b m ≡ true → m ∈ validMoves b
+    valid-possible-l b m x with member m (validMoves b) _==_
+    valid-possible-l b m x | yes p = p
+    valid-possible-l b m () | no ¬p
+
+    valid-possible-r : ∀ (b : Board) → (m : Move) → m ∈ validMoves b → isMovePossible? b m ≡ true
+    valid-possible-r b m x with member m (validMoves b) _==_
+    valid-possible-r b m x | yes p = refl
+    valid-possible-r b m x | no ¬p = ⊥-elim (¬p x)
+
+   ------------------------------
+   --  The FinishedBoard type  --
+   ------------------------------
+    
+    data FinishedBoard : Set where
+      draw : (w : WorkerBoard) → noWinnerW w → wMovesNo w ≡ 9 → FinishedBoard
+      win  : (c : Color) (w : WorkerBoard) → wonW c w → FinishedBoard
+
+    getResult : FinishedBoard → Result
+    getResult (draw _ _ _)  = Draw
+    getResult (win c _ _)   = Win c    
+
+    -- adding a given move
+
+    addMove : (b : Board) → (m : Move) → (p : m ∈ validMoves b) → WorkerBoard
+    addMove (goodBoard {c} {n} n<9 ms dist noWin) m p = worker n<9 (ms ▸ m) (dist-cons dist 
+          (validMoves-distinct {c} {n} {m} {ms} {n<9} {dist} {noWin} p))    
+
+    makeMoveWorker : WorkerBoard → Board ⊎ FinishedBoard
+    makeMoveWorker (worker n≤9 ms dist) with wonDec X ms
+    makeMoveWorker (worker n≤9 ms dist) | yes xWin = inj₂ (win X (worker n≤9 ms dist) xWin)
+    makeMoveWorker (worker n≤9 ms dist) | no ¬xWin with wonDec O ms
+    makeMoveWorker (worker n≤9 ms dist) | no ¬xWin | yes yWin = inj₂ (win O (worker n≤9 ms dist) yWin)
+    makeMoveWorker (worker {c} {n} n≤9 ms dist) | no ¬xWin | no ¬yWin with n ≟ℕ 9
+    makeMoveWorker (worker {c} {n} n≤9 ms dist) | no ¬xWin | no ¬yWin | yes d = inj₂ (draw (worker n≤9 ms dist) (¬xWin , ¬yWin) d)
+    makeMoveWorker (worker {c} {n} n≤9 ms dist) | no ¬xWin | no ¬yWin | no ¬d = inj₁ (goodBoard (lem-≤-cases-ext n 9 n≤9 ¬d) ms dist (¬xWin , ¬yWin))
+
     makeMove : (b : Board) → (m : Move) → m ∈ validMoves b → Board ⊎ FinishedBoard
-    makeMove b m valid with inspect (wonByColor X b)
-    makeMove b m valid | true with-≡ eq = inj₂ (win X b (won eq))
-    makeMove b m valid | false with-≡ eq with inspect (wonByColor O b)
-    makeMove b m valid | false with-≡ eq | true with-≡ eq' = inj₂ (win O b (won eq'))
-    makeMove b m valid | false with-≡ eq | false with-≡ eq' with movesNo b ≟ℕ 9
-    makeMove b m valid | false with-≡ eq | false with-≡ eq' | yes p = inj₂ (draw {!!} p)
-    makeMove b m valid | false with-≡ eq | false with-≡ eq' | no ¬p = {!!}
+    makeMove b m m∈valid = makeMoveWorker (addMove b m m∈valid)
 
     ------------------------------
     --  the UndoableBoard type  --
     ------------------------------
 
+    -- this type is too weak
+    -- we need to fix it, for each to hold a undoed position
+  
     data UndoableBoard : Set where
       undoable : Σ[ b ∶ WorkerBoard ] (wIsEmpty b ≡ false) → UndoableBoard
 
@@ -444,15 +499,20 @@ module GameImplementation where
     canUndo? (goodBoard n<9 (ms ▸ m) dist noWin) = just (undoable (toWorker (goodBoard n<9 (ms ▸ m) dist noWin) , refl))
 
 
-    lem-non-zero-means-not-empty : ∀ (b : WorkerBoard) → 0 < wMovesNo b → wIsEmpty b ≡ false
-    lem-non-zero-means-not-empty (worker {c} {zero} n≤9 ms dist) ()
-    lem-non-zero-means-not-empty (worker {.(otherColor c)} {suc .n} n≤9 (_▸_ {c} {n} ms m) dist) (s≤s m≤n) = refl
+    lem-non-zero-means-not-empty : ∀ {b : WorkerBoard} → 0 < wMovesNo b → wIsEmpty b ≡ false
+    lem-non-zero-means-not-empty {worker {c} {zero} n≤9 ms dist} ()
+    lem-non-zero-means-not-empty {worker {.(otherColor c)} {suc .n} n≤9 (_▸_ {c} {n} ms m) dist} (s≤s m≤n) = refl
+
+    -- lemma: if won then wasn't empty
 
     undoFin : (fin : FinishedBoard) → UndoableBoard
-    undoFin (draw b y) rewrite toWorker-valid b = undoable (toWorker b , lem-non-zero-means-not-empty (toWorker b) 
-                                                  (subst (λ x → 1 ≤ x) (sym y) (s≤s z≤n)))
-    undoFin (win c b y) = undoable (toWorker b , {!!})
-
+    undoFin (draw (worker n≤9 [] dist) noWinner ())
+    undoFin (draw (worker {.(otherColor c)} {suc .n} n≤9 (_▸_ {c} {n} ms m) (dist-cons v v')) noWinner n≡9)
+      = undoable ((worker (lem-≤-trans (lem-≤-suc n) n≤9) ms v) 
+                   , lem-non-zero-means-not-empty (subst (λ x → 1 ≤ x) (sym (lem-suc-eq n≡9)) (s≤s z≤n)))
+    undoFin (win c (worker n≤9 [] dist) won) = ⊥-elim (lem-won-empty c won)
+    undoFin (win c (worker n≤9 (_▸_ {_} {n} ms m) (dist-cons v y)) won) = 
+       undoable ((worker (lem-≤-trans (lem-≤-suc n) n≤9) ms v) , {!!})
 
     undo : (ub : UndoableBoard) → Board
     undo (undoable (worker n≤9 [] dist , ()))
@@ -482,9 +542,9 @@ module GameImplementation where
            makeMove         = makeMove;
            empty-is-empty   = refl;
            starting-player  = refl;
-           no-undo-empty    = {!!};
-           valid-possible-l = {!!};
-           valid-possible-r = {!!};
+           no-undo-empty    = refl;
+           valid-possible-l = valid-possible-l;
+           valid-possible-r = valid-possible-r;
            undo-make-move   = {!!} 
          }
 
