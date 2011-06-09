@@ -162,7 +162,6 @@ record GameInterface : Set₁ where
 
     Board         : Set
     FinishedBoard  : Set
-    UndoableBoard : Set
 
   -- operations
 
@@ -172,9 +171,8 @@ record GameInterface : Set₁ where
 
     getResult       : FinishedBoard → Result
 
-    canUndo?        : Board         → Maybe UndoableBoard
-    undoFin         : FinishedBoard  → UndoableBoard
-    undo            : UndoableBoard → Board
+    undo            : Board         → Maybe Board
+    undoFin         : FinishedBoard → Board
 
     validMoves      : Board → List Move
     isMovePossible? : Board → Move → Bool
@@ -184,28 +182,14 @@ record GameInterface : Set₁ where
 
     empty-is-empty   : isEmpty emptyBoard       ≡ true
     starting-player  : currentPlayer emptyBoard ≡ X
-    no-undo-empty    : canUndo? emptyBoard      ≡ nothing
+    no-undo-empty    : undo     emptyBoard      ≡ nothing
 
     valid-possible-l : ∀ (b : Board) (m : Move) → isMovePossible? b m ≡ true → m ∈ validMoves b
     valid-possible-r : ∀ (b : Board) (m : Move) → m ∈ validMoves b → isMovePossible? b m ≡ true
 
-    undo-make-move   : ∀ {b b' m} → (vld : m ∈ validMoves b) → makeMove b m vld ≡ inj₁ b' 
-                                  → ∃ (λ undoableBoard → (canUndo? b' ≡ just undoableBoard) × (undo undoableBoard ≡ b))
+    undo-make-move   : ∀ (b b' : Board) (m : Move) (vld : m ∈ validMoves b) →
+                                 makeMove b m vld ≡ inj₁ b' → undo b' ≡ just b
 
-  -- Agda's way to simulate
-  -- Haskell's type classes
-
-  data Undoable : Set where
-    B : Undoable
-    F : Undoable
-
-  interp : Undoable → Set
-  interp B = Board
-  interp F = FinishedBoard
-
-  undo? : {t : Undoable} → interp t → Maybe UndoableBoard
-  undo? {B} = canUndo?
-  undo? {F} = λ f → just (undoFin f)
 
 -----------------------------------------------------------------------------------------------------------------
 --  An implementation of the TicTacToe game system that will reify the API and provide many static guarantees  --
@@ -275,13 +259,13 @@ module GameImplementation where
 
     xMoves : {c : Color}{n : ℕ} → Moves c n → List Move
     xMoves [] = []
-    xMoves (_▸_ {X} ms m) = xMoves ms
-    xMoves (_▸_ {O} ms m) = m ∷ xMoves ms
+    xMoves (_▸_ {X} ms m) = m ∷ xMoves ms
+    xMoves (_▸_ {O} ms m) = xMoves ms
   
     oMoves : {c : Color}{n : ℕ} → Moves c n → List Move
     oMoves [] = []
-    oMoves (_▸_ {X} ms m) = m ∷ oMoves ms
-    oMoves (_▸_ {O} ms m) = oMoves ms
+    oMoves (_▸_ {X} ms m) = oMoves ms
+    oMoves (_▸_ {O} ms m) = m ∷ oMoves ms
 
     winningPositions : List (List Move)
     winningPositions = (P11 ∷ P12 ∷ P13 ∷ []) ∷                        -- horizontal
@@ -300,6 +284,24 @@ module GameImplementation where
     movesByColor X m = xMoves m
     movesByColor O m = oMoves m
 
+    lem-same-color : ∀ {n} (cand : Color) → (m : Move) (ms : Moves (otherColor cand) n) → movesByColor cand ms ≡ movesByColor cand (ms ▸ m)
+    lem-same-color X m ms = refl
+    lem-same-color O m ms = refl
+
+    lem-other-color : ∀ {n} (cand : Color) → (m : Move) (ms : Moves cand n) → m ∷ movesByColor cand ms ≡ movesByColor cand (ms ▸ m)
+    lem-other-color X m ms = refl
+    lem-other-color O m ms = refl
+
+    lem-movesByColor-ext : ∀ {c n} (cand : Color) → (m : Move) (ms : Moves c n) → movesByColor cand ms ⊂ movesByColor cand (ms ▸ m)
+    lem-movesByColor-ext {X} X m ms = lem-⊂-ext m (xMoves ms) (xMoves ms) (⊂-refl (xMoves ms))
+    lem-movesByColor-ext {O} X m ms = ⊂-refl (xMoves ms)
+    lem-movesByColor-ext {X} O m ms = ⊂-refl (oMoves ms)
+    lem-movesByColor-ext {O} O m ms = lem-⊂-ext m (oMoves ms) (oMoves ms) (⊂-refl (oMoves ms))
+
+
+    {- BASE subset lem-movesByColor-ext -}
+
+
     -------------------------
     --  winning positions  --
     -------------------------
@@ -316,9 +318,18 @@ module GameImplementation where
     lem-won-empty : ∀ (c : Color) → ¬ WonC c []
     lem-won-empty c (wonC .[] .[] (∈-drop (∈-drop (∈-drop (∈-drop (∈-drop (∈-drop (∈-drop (∈-drop ())))))))) nil)
     lem-won-empty X (wonC .[] .(m ∷ ms) y (cons {m} {ms} y' ()))
-    lem-won-empty O (wonC .[] .(m ∷ ms) y (cons {m} {ms} y' ()))  
+    lem-won-empty O (wonC .[] .(m ∷ ms) y (cons {m} {ms} y' ()))
 
-    {- BASE won lem-won-empty -}
+    lem-win-extend : ∀ {c n} → (winner : Color)(ms : Moves c n) → (m : Move) → WonC winner ms → WonC winner (ms ▸ m)
+    lem-win-extend winner ms m (wonC .ms winning winningPosition winnning∈movesByClr) 
+      = wonC (ms ▸ m) winning winningPosition (⊂-trans winning (movesByColor winner ms)
+             (movesByColor winner (ms ▸ m)) winnning∈movesByClr (lem-movesByColor-ext winner m ms))
+
+    lem-nowin-prev : ∀ {c n} → (winner : Color)(ms : Moves c n) → (m : Move) → ¬ WonC winner (ms ▸ m) → ¬ WonC winner ms
+    lem-nowin-prev winner ms m x x' = x (lem-win-extend winner ms m x')
+
+    {- BASE won lem-won-empty lem-nowin-prev lem-win-extend -}
+
 
     P : forall {c n} → Color → Moves c n → List Move → Set
     P cand ms winConfig = winConfig ⊂ movesByColor cand ms
@@ -385,9 +396,9 @@ module GameImplementation where
     -- where the game is still in progress
   
     data Board : Set where
-      goodBoard : {c : Color}{n : ℕ} → (n<9  : n < 9)                  -- draw impossible
-                                     → (ms   : Moves c n  )            -- moves so far
-                                     → (dist : distinct ms)            -- everything ok so far
+      goodBoard : {c : Color}{n : ℕ} → (n<9   : n < 9)                 -- draw impossible
+                                     → (ms    : Moves c n  )           -- moves so far
+                                     → (dist  : distinct ms)           -- everything ok so far
                                      → (noWin : noWinner ms)           -- no winner yet
                                      → Board
 
@@ -484,44 +495,34 @@ module GameImplementation where
     makeMove : (b : Board) → (m : Move) → m ∈ validMoves b → Board ⊎ FinishedBoard
     makeMove b m m∈valid = makeMoveWorker (addMove b m m∈valid)
 
-    ------------------------------
-    --  the UndoableBoard type  --
-    ------------------------------
-
-    -- this type is too weak
-    -- we need to fix it, for each to hold a undoed position
+    --------------------------------------
+    --  Operations concerned with undo  --
+    --------------------------------------
   
-    data UndoableBoard : Set where
-      undoable : Σ[ b ∶ WorkerBoard ] (wIsEmpty b ≡ false) → UndoableBoard
-
-    canUndo? : (b : Board) → Maybe UndoableBoard
-    canUndo? (goodBoard n<9 [] dist noWin)       = nothing
-    canUndo? (goodBoard n<9 (ms ▸ m) dist noWin) = just (undoable (toWorker (goodBoard n<9 (ms ▸ m) dist noWin) , refl))
-
+    undo : (b : Board) → Maybe Board
+    undo (goodBoard n<9 [] dist noWin) = nothing
+    undo (goodBoard n<9 (ms ▸ m) (dist-cons v y) (noWinX , noWinO)) = just (goodBoard (lem-<-trans lem-≤-refl n<9) ms v 
+         ((λ x → noWinX (lem-win-extend X ms m x)) , (λ x → noWinO (lem-win-extend O ms m x))))
 
     lem-non-zero-means-not-empty : ∀ {b : WorkerBoard} → 0 < wMovesNo b → wIsEmpty b ≡ false
     lem-non-zero-means-not-empty {worker {c} {zero} n≤9 ms dist} ()
     lem-non-zero-means-not-empty {worker {.(otherColor c)} {suc .n} n≤9 (_▸_ {c} {n} ms m) dist} (s≤s m≤n) = refl
 
     -- lemma: if won then wasn't empty
+    undoFin : (fin : FinishedBoard) → Board
+    undoFin (draw (worker n≤9 [] dist) (noWinX , noWinO) ())
+    undoFin (draw (worker n≤9 (_▸_ {c} {n} ms m) (dist-cons v y)) (noWinX , noWinO) n≡9) = goodBoard n≤9 ms v 
+          ((λ x → noWinX (lem-win-extend X ms m x)) , (λ x → noWinO (lem-win-extend O ms m x)))
+    undoFin (win c (worker n≤9 [] dist) y) = ⊥-elim (lem-won-empty c y)
+    undoFin (win winner (worker n≤9 (_▸_ {c} {n} ms m) (dist-cons v y)) y') = {!!}
+    -- here we need to have a proof that ms had no winner
+    -- we can either embed the proof somewhere, or try to prove that
+    -- the construction so far guarantees that property
+ 
+    undo-make-move : (b b' : Board) (m : Move) (vld : m ∈ validMoves b) →
+                     makeMove b m vld ≡ inj₁ b' → undo b' ≡ just b
+    undo-make-move b b' m vld x = {!!}
 
-    undoFin : (fin : FinishedBoard) → UndoableBoard
-    undoFin (draw (worker n≤9 [] dist) noWinner ())
-    undoFin (draw (worker {.(otherColor c)} {suc .n} n≤9 (_▸_ {c} {n} ms m) (dist-cons v v')) noWinner n≡9)
-      = undoable ((worker (lem-≤-trans (lem-≤-suc n) n≤9) ms v) 
-                   , lem-non-zero-means-not-empty (subst (λ x → 1 ≤ x) (sym (lem-suc-eq n≡9)) (s≤s z≤n)))
-    undoFin (win c (worker n≤9 [] dist) won) = ⊥-elim (lem-won-empty c won)
-    undoFin (win c (worker n≤9 (_▸_ {_} {n} ms m) (dist-cons v y)) won) = 
-       undoable ((worker (lem-≤-trans (lem-≤-suc n) n≤9) ms v) , {!!})
-
-    undo : (ub : UndoableBoard) → Board
-    undo (undoable (worker n≤9 [] dist , ()))
-    undo (undoable (worker n≤9 (ms ▸ m) (dist-cons v y) , nonEmpt)) = goodBoard n≤9 ms v {!!}
-
-    undo-valid : ∀ (w : WorkerBoard) → (nonEmpt : wIsEmpty w ≡ false) → 
-                       suc (movesNo (undo (undoable (w , nonEmpt)))) ≡ wMovesNo w
-    undo-valid (worker n≤9 [] dist) ()
-    undo-valid (worker n≤9 (ms ▸ m) (dist-cons v y)) nonEmpt = refl
 
 
 
@@ -529,23 +530,21 @@ module GameImplementation where
   game = record {
            Board            = Board;
            FinishedBoard    = FinishedBoard;
-           UndoableBoard    = UndoableBoard;
            emptyBoard       = emptyBoard;
            isEmpty          = isEmpty;
            currentPlayer    = currentPlayer;
            getResult        = getResult;
-           canUndo?         = canUndo?;
            undoFin          = undoFin;
            undo             = undo;
            validMoves       = validMoves;
-           isMovePossible?  = {!!};
+           isMovePossible?  = isMovePossible?;
            makeMove         = makeMove;
            empty-is-empty   = refl;
            starting-player  = refl;
            no-undo-empty    = refl;
            valid-possible-l = valid-possible-l;
            valid-possible-r = valid-possible-r;
-           undo-make-move   = {!!} 
+           undo-make-move   = undo-make-move 
          }
 
 module Test where
