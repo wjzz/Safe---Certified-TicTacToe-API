@@ -3,8 +3,8 @@ module StrongSpec where
 open import Data.Maybe
 open import Data.Bool
 open import Data.List
---open import Data.List.Theorems
-open import Data.Nat
+open import Data.List.Theorems
+open import Data.Nat renaming (_≟_ to _≟ℕ_)
 open import Data.Nat.Theorems
 open import Data.Product
 open import Data.Sum
@@ -23,7 +23,6 @@ open import Relation.Binary.PropositionalEquality
 data Color : Set where
   X O : Color
 
-
 otherColor : Color → Color
 otherColor X = O
 otherColor O = X
@@ -31,32 +30,6 @@ otherColor O = X
 otherColorValid : ∀ (c : Color) → otherColor c ≢ c
 otherColorValid X ()
 otherColorValid O ()
-
-------------------------------------------------------------
--- list membership, a version with implicit args
--- (this makes proof terms much shorter)
---
--- adapted from Data.List.Theorems
------------------------------------------------------------
-
-infix 4 _∈_
-
-data _∈_ {A : Set} : (a : A) → (xs : List A) → Set where
-  ∈-take : {a : A}   → {xs : List A} → a ∈ a ∷ xs
-  ∈-drop : {a x : A} → {xs : List A} → a ∈ xs → a ∈ x ∷ xs
-
--- if equality is decidable for A then list membership is decidable
-
-member : {A : Set} → (a : A) → (l : List A) → Decidable {A = A} (_≡_) → Dec(a ∈ l)
-member a [] eq = no (λ ())
-member a (x ∷ xs) eq with inspect (eq a x)
-member a (x ∷ xs) eq | yes p with-≡ eq' rewrite p = yes ∈-take
-member a (x ∷ xs) eq | no ¬p with-≡ eq' with member a xs eq
-member a (x ∷ xs) eq | no ¬p with-≡ eq' | yes p = yes (∈-drop p)
-member a (x ∷ xs) eq | no ¬p' with-≡ eq' | no ¬p = no (imp a x xs ¬p ¬p') where
-  imp : {A : Set}(a x : A)(xs : List A) → (¬ a ∈ xs) → (¬ a ≡ x) → ¬ a ∈ x ∷ xs
-  imp .x' x' xs' ¬axs ¬ax (∈-take {.x'} {.xs'}) = ¬ax refl
-  imp a' x' xs' ¬axs ¬ax (∈-drop {.a'} {.x'} {.xs'} y) = ¬axs y
 
 -------------------
 -- the move type
@@ -187,7 +160,7 @@ record GameInterface : Set₁ where
   -- abstract types
 
     Board         : Set
-    FinishedGame  : Set
+    FinishedBoard  : Set
     UndoableBoard : Set
 
   -- operations
@@ -196,15 +169,15 @@ record GameInterface : Set₁ where
     isEmpty         : Board → Bool
     currentPlayer   : Board → Color
 
-    getResult       : FinishedGame → Result
+    getResult       : FinishedBoard → Result
 
     canUndo?        : Board         → Maybe UndoableBoard
-    undoFin         : FinishedGame  → UndoableBoard
+    undoFin         : FinishedBoard  → UndoableBoard
     undo            : UndoableBoard → Board
 
     validMoves      : Board → List Move
     isMovePossible? : Board → Move → Bool
-    makeMove        : (b : Board) → (m : Move) → m ∈ validMoves b → Board ⊎ FinishedGame
+    makeMove        : (b : Board) → (m : Move) → m ∈ validMoves b → Board ⊎ FinishedBoard
   
   -- properties
 
@@ -227,7 +200,7 @@ record GameInterface : Set₁ where
 
   interp : Undoable → Set
   interp B = Board
-  interp F = FinishedGame
+  interp F = FinishedBoard
 
   undo? : {t : Undoable} → interp t → Maybe UndoableBoard
   undo? {B} = canUndo?
@@ -328,12 +301,6 @@ module GameImplementation where
 
     -- winning positions
 
-    infix 4 _⊂_
-
-    data _⊂_ : (l1 l2 : List Move) → Set where
-      nil  : {l : List Move} → [] ⊂ l
-      cons : {m : Move} {ms l : List Move} → ms ⊂ l → m ∈ l → m ∷ ms ⊂ l
-
     data WonC : forall {c n} → (winner : Color) (ms : Moves c n) → Set where
       wonC : ∀ {c n winner} → (m : Moves c n) → (winning : List Move) →
               winning ∈ winningPositions → 
@@ -350,16 +317,21 @@ module GameImplementation where
 
     {- BASE won lem-won-empty -}
 
+    P : forall {c n} → Color → Moves c n → List Move → Set
+    P cand ms winConfig = winConfig ⊂ movesByColor cand ms
+
+    decP : forall {c n} → (cand : Color) → (ms : Moves c n) → (x : List Move) → Dec (x ⊂ movesByColor cand ms)
+    decP cand ms l = subsetDec l (movesByColor cand ms) _==_
+
+
     wonDec : forall {c n} → (cand : Color) → (ms : Moves c n) → Dec (WonC cand ms)
-    wonDec cand ms = {!!}
-
-
-  {-
-    wonPosition : List Move → Bool
-    wonPosition l = any (λ winPos → all (λ move → moveListMember move winPos)
-                                           (selectMoves c b)) 
-                           winningPositions  
-  -}
+    wonDec cand ms with any-dec (P cand ms) winningPositions (decP cand ms)
+    wonDec cand ms | yes p with lem-any-exists (P cand ms) winningPositions p
+    ... | winningPosition , inWinning , movesSubset = yes (wonC ms winningPosition inWinning movesSubset)
+    wonDec cand ms | no ¬p with lem-none-exists (P cand ms) winningPositions ¬p
+    ... | noWinningPosition = no lem where
+      lem : (x : WonC cand ms) → ⊥
+      lem (wonC .ms winning y y') = noWinningPosition (winning , y , y')
 
     --------------------------------
     --    Every move is unique    --
@@ -431,7 +403,9 @@ module GameImplementation where
     -- checking if there is a winner
 
     wonByColor : Color → Board → Bool
-    wonByColor = {!!}
+    wonByColor c (goodBoard n<9 ms dist noWin) with wonDec c ms
+    ... | yes p = true
+    ... | no ¬p = false
 
     data Won : (c : Color) (b : Board) → Set where
       won : {c : Color} {b : Board} → wonByColor c b ≡ true → Won c b
@@ -443,6 +417,20 @@ module GameImplementation where
     getResult : FinishedBoard → Result
     getResult (draw b y)  = Draw
     getResult (win c b y) = Win c
+
+    validMoves : Board → List Move
+    validMoves b = [] -- TO FIX!!
+
+    -- the code below is totally wrong, we need to add the move m before any other matching!!!
+    -- TO FIX!!
+    makeMove : (b : Board) → (m : Move) → m ∈ validMoves b → Board ⊎ FinishedBoard
+    makeMove b m valid with inspect (wonByColor X b)
+    makeMove b m valid | true with-≡ eq = inj₂ (win X b (won eq))
+    makeMove b m valid | false with-≡ eq with inspect (wonByColor O b)
+    makeMove b m valid | false with-≡ eq | true with-≡ eq' = inj₂ (win O b (won eq'))
+    makeMove b m valid | false with-≡ eq | false with-≡ eq' with movesNo b ≟ℕ 9
+    makeMove b m valid | false with-≡ eq | false with-≡ eq' | yes p = inj₂ (draw {!!} p)
+    makeMove b m valid | false with-≡ eq | false with-≡ eq' | no ¬p = {!!}
 
     ------------------------------
     --  the UndoableBoard type  --
@@ -480,7 +468,7 @@ module GameImplementation where
   game : GameInterface
   game = record {
            Board            = Board;
-           FinishedGame     = FinishedBoard;
+           FinishedBoard    = FinishedBoard;
            UndoableBoard    = UndoableBoard;
            emptyBoard       = emptyBoard;
            isEmpty          = isEmpty;
@@ -489,9 +477,9 @@ module GameImplementation where
            canUndo?         = canUndo?;
            undoFin          = undoFin;
            undo             = undo;
-           validMoves       = {!!};
+           validMoves       = validMoves;
            isMovePossible?  = {!!};
-           makeMove         = {!!};
+           makeMove         = makeMove;
            empty-is-empty   = refl;
            starting-player  = refl;
            no-undo-empty    = {!!};
