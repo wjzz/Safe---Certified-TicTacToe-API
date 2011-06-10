@@ -80,6 +80,23 @@ resultCmp X (Win O)  _      = LT
 resultCmp O m1 m2 = resultCmp X m2 m1
 
 
+foldMoves :: Color -> [Result] -> Result
+foldMoves c (p:ps) = aux c p ps where
+  aux X (Win X) _ = (Win X) -- we can stop here
+  aux O (Win O) _ = (Win O) -- we can stop here
+  aux X Draw ((Win X) : rs) = (Win X)
+  aux X Draw (Draw : rs)   = aux X Draw rs
+  aux X Draw (Win O : rs)  = aux X Draw rs
+  aux X (Win O) (res : rs) = aux X res rs
+  aux O Draw ((Win O) : rs) = (Win O)
+  aux O Draw (Draw : rs)   = aux O Draw rs
+  aux O Draw (Win X : rs)  = aux O Draw rs
+  aux O (Win X) (res : rs) = aux O res rs
+  aux c r [] = r
+  --aux c (res) ((res') : rs) = aux c (maximumBy (resultCmp c) [res, res']) rs
+
+foldMoves c [] = error "Implementation error"
+
 bestResultByColor :: Color -> Board -> Result
 bestResultByColor c b = 
   case isFinished b of 
@@ -90,7 +107,10 @@ bestResultByColor c b =
       in
        case moves of
          [] -> error "Implementation error!"         
-         _  -> maximumBy (resultCmp c) $ map (bestResultByColor (otherColor c) . addMove b) moves
+         _  -> foldMoves c rec where --(res , count)  where
+           rec   = map (bestResultByColor (otherColor c) . addMove b) moves
+           --res   = maximumBy (resultCmp c) $ map (fst . bestResultByColor (otherColor c) . addMove b) moves
+           --count = sum $ map (snd . bestResultByColor (otherColor c) . addMove b) moves
 
 main :: IO ()
 main = print gameResult
