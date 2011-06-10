@@ -190,6 +190,12 @@ record GameInterface : Set₁ where
     undo-make-move   : ∀ (b b' : Board) (m : Move) (vld : m ∈ validMoves b) →
                                  makeMove b m vld ≡ inj₁ b' → undo b' ≡ just b
 
+  -- additional properties
+    all-possible     : validMoves emptyBoard ≡ allMoves
+
+    undo-make-move2  : ∀ (b : Board) (f : FinishedBoard) (m : Move) (vld : m ∈ validMoves b) →
+                                 makeMove b m vld ≡ inj₂ f → undoFin f ≡ b
+
 
 -----------------------------------------------------------------------------------------------------------------
 --  An implementation of the TicTacToe game system that will reify the API and provide many static guarantees  --
@@ -327,16 +333,15 @@ module GameImplementation where
 
     lem-nowin-prev : ∀ {c n} → (winner : Color)(ms : Moves c n) → (m : Move) → ¬ WonC winner (ms ▸ m) → ¬ WonC winner ms
     lem-nowin-prev winner ms m x x' = x (lem-win-extend winner ms m x')
+    
 
     {- BASE won lem-won-empty lem-nowin-prev lem-win-extend -}
-
 
     P : forall {c n} → Color → Moves c n → List Move → Set
     P cand ms winConfig = winConfig ⊂ movesByColor cand ms
 
     decP : forall {c n} → (cand : Color) → (ms : Moves c n) → (x : List Move) → Dec (x ⊂ movesByColor cand ms)
     decP cand ms l = subsetDec l (movesByColor cand ms) _==_
-
 
     wonDec : forall {c n} → (cand : Color) → (ms : Moves c n) → Dec (WonC cand ms)
     wonDec cand ms with any-dec (P cand ms) winningPositions (decP cand ms)
@@ -365,28 +370,23 @@ module GameImplementation where
     -- this is the most general board type
 
     data WorkerBoard : Set where
-      worker : {c : Color}{n : ℕ} → (n≤9  : n ≤ 9)                 -- at most all fields filled
+      worker : {c : Color}{n : ℕ} → (n<9  : n < 9)                 -- at most all fields filled
                                   → (ms   : Moves c n)             -- list of moves
-                                  → (dist : distinct ms)           -- all moves distinct
+                                  → (dist : distinct ms)           -- previous moves distinct
+                                  → (noWin : noWinner ms)          -- the games had no winner before m
+                                  → (m    : Move)                  -- the last move
+                                  → (v-m  : m ∉′ ms)               -- m is valid
                                   → WorkerBoard
   
     -- basic queries
-
-    wMoves : WorkerBoard → ∃₂ Moves
-    wMoves (worker {c} {n} n≤9 ms dist) = c , n , ms
-
     wMovesNo : WorkerBoard → ℕ
-    wMovesNo (worker {c} {n} n≤9 ms dist) = n
-
-    wIsEmpty : WorkerBoard → Bool
-    wIsEmpty (worker n≤9 [] dist)       = true
-    wIsEmpty (worker n≤9 (ms ▸ m) dist) = false
-
+    wMovesNo (worker {c} {n} n≤9 ms dist noWin m v-m) = suc n
+    
     noWinnerW : WorkerBoard → Set
-    noWinnerW (worker n≤9 ms dist) = noWinner ms
+    noWinnerW (worker n<9 ms dist noWin m v-m) = noWinner (ms ▸ m)
 
     wonW : Color → WorkerBoard → Set
-    wonW c (worker n≤9 ms dist) = WonC c ms
+    wonW c (worker n<9 ms dist noWin m v-m) = WonC c (ms ▸ m)
 
     ----------------------
     --  the Board type  --
@@ -404,9 +404,6 @@ module GameImplementation where
 
     -- most basic queries
 
-    moves : Board → ∃₂ Moves
-    moves (goodBoard {c} {n} n<9 ms dist noWin) = c , n , ms
-
     emptyBoard : Board
     emptyBoard = goodBoard (s≤s z≤n) [] dist-nil (lem-won-empty X , lem-won-empty O)
 
@@ -414,25 +411,8 @@ module GameImplementation where
     isEmpty (goodBoard _ [] _ _)      = true
     isEmpty (goodBoard _ (_ ▸ _) _ _) = false
 
-    movesNo : Board → ℕ
-    movesNo (goodBoard {c} {n} y ms y' _) = n
-
     currentPlayer : Board → Color
     currentPlayer (goodBoard {c} {n} y ms y' _) = c
-
-    noWinnerB : Board → Set
-    noWinnerB (goodBoard n<9 ms dist noWin) = noWinner ms
-
-    wonB : Color → Board → Set
-    wonB c (goodBoard n<9 ms dist noWin) = WonC c ms
-
-    -- conversion to worker
-
-    toWorker : Board → WorkerBoard
-    toWorker (goodBoard {c} {n} n<9 ms dist noWin) = worker (lem-≤-trans (lem-≤-suc n) n<9) ms dist
-
-    toWorker-valid : ∀ (b : Board) → movesNo b ≡ wMovesNo (toWorker b)
-    toWorker-valid (goodBoard n<9 ms dist noWin) = refl
 
     ----------------------------------------
     --  valid moves and their properties  --
@@ -441,9 +421,10 @@ module GameImplementation where
     validMoves : Board → List Move
     validMoves (goodBoard n<9 ms dist noWin) = removeDec allMoves (λ move → member′ move ms)
 
-    validMoves-distinct : ∀ {c n m ms n<9 dist noWin} → m ∈ validMoves (goodBoard {c} {n} n<9 ms dist noWin) → m ∉′ ms
-    validMoves-distinct {c} {n} {m} {ms} m∈valid m∈ms with removeDec-valid-rev allMoves (λ move → member′ move ms) m m∈valid
-    validMoves-distinct m∈valid m∈ms | _ , ¬Pa  = ¬Pa m∈ms
+    validMoves-distinct : ∀ {c n} → (m : Move) (ms : Moves c n) (n<9 : n < 9) (dist : distinct ms) (noWin : noWinner ms)
+                          → m ∈ validMoves (goodBoard {c} {n} n<9 ms dist noWin) → m ∉′ ms
+    validMoves-distinct {c} {n} m ms n<9 dist noWin m∈valid m∈ms with removeDec-valid-rev allMoves (λ move → member′ move ms) m m∈valid
+    validMoves-distinct m ms n<9 dist noWin m∈valid m∈ms | _ , ¬Pa  = ¬Pa m∈ms
 
     validMoves-distinct-rev : ∀ {c n m ms n<9 dist noWin} → m ∉′ ms → m ∈ validMoves (goodBoard {c} {n} n<9 ms dist noWin) 
     validMoves-distinct-rev {c} {n} {m} {ms} m∉ms = removeDec-valid allMoves (λ move → member′ move ms) m m∉ms (allMovesValid m)
@@ -480,17 +461,17 @@ module GameImplementation where
     -- adding a given move
 
     addMove : (b : Board) → (m : Move) → (p : m ∈ validMoves b) → WorkerBoard
-    addMove (goodBoard {c} {n} n<9 ms dist noWin) m p = worker n<9 (ms ▸ m) (dist-cons dist 
-          (validMoves-distinct {c} {n} {m} {ms} {n<9} {dist} {noWin} p))    
+    addMove (goodBoard {c} {n} n<9 ms dist noWin) m p = worker n<9 ms dist noWin m (validMoves-distinct m ms n<9 dist noWin p)
 
     makeMoveWorker : WorkerBoard → Board ⊎ FinishedBoard
-    makeMoveWorker (worker n≤9 ms dist) with wonDec X ms
-    makeMoveWorker (worker n≤9 ms dist) | yes xWin = inj₂ (win X (worker n≤9 ms dist) xWin)
-    makeMoveWorker (worker n≤9 ms dist) | no ¬xWin with wonDec O ms
-    makeMoveWorker (worker n≤9 ms dist) | no ¬xWin | yes yWin = inj₂ (win O (worker n≤9 ms dist) yWin)
-    makeMoveWorker (worker {c} {n} n≤9 ms dist) | no ¬xWin | no ¬yWin with n ≟ℕ 9
-    makeMoveWorker (worker {c} {n} n≤9 ms dist) | no ¬xWin | no ¬yWin | yes d = inj₂ (draw (worker n≤9 ms dist) (¬xWin , ¬yWin) d)
-    makeMoveWorker (worker {c} {n} n≤9 ms dist) | no ¬xWin | no ¬yWin | no ¬d = inj₁ (goodBoard (lem-≤-cases-ext n 9 n≤9 ¬d) ms dist (¬xWin , ¬yWin))
+    makeMoveWorker (worker n<9 ms dist noWin m v-m) with wonDec X (ms ▸ m)
+    makeMoveWorker (worker n<9 ms dist noWin m v-m) | yes xWin = inj₂ (win X (worker n<9 ms dist noWin m v-m) xWin)
+    makeMoveWorker (worker n<9 ms dist noWin m v-m) | no ¬xWin with wonDec O (ms ▸ m)
+    makeMoveWorker (worker n<9 ms dist noWin m v-m) | no ¬xWin | yes oWin = inj₂ (win O (worker n<9 ms dist noWin m v-m) oWin)
+    makeMoveWorker (worker {c} {n} n<9 ms dist noWin m v-m) | no ¬xWin | no ¬oWin with suc n ≟ℕ 9
+    makeMoveWorker (worker n<9 ms dist noWin m v-m) | no ¬xWin | no ¬oWin | yes d = inj₂ (draw (worker n<9 ms dist noWin m v-m) (¬xWin , ¬oWin) d)
+    makeMoveWorker (worker {c} {n} n<9 ms dist noWin m v-m) | no ¬xWin | no ¬oWin | no ¬d 
+      = inj₁ (goodBoard (lem-≤-cases-ext (suc n) 9 n<9 ¬d) (ms ▸ m) (dist-cons dist v-m) (¬xWin , ¬oWin))
 
     makeMove : (b : Board) → (m : Move) → m ∈ validMoves b → Board ⊎ FinishedBoard
     makeMove b m m∈valid = makeMoveWorker (addMove b m m∈valid)
@@ -501,30 +482,52 @@ module GameImplementation where
   
     undo : (b : Board) → Maybe Board
     undo (goodBoard n<9 [] dist noWin) = nothing
-    undo (goodBoard n<9 (ms ▸ m) (dist-cons v y) (noWinX , noWinO)) = just (goodBoard (lem-<-trans lem-≤-refl n<9) ms v 
-         ((λ x → noWinX (lem-win-extend X ms m x)) , (λ x → noWinO (lem-win-extend O ms m x))))
+    undo (goodBoard n<9 (_▸_ {c} {n} ms m) (dist-cons v y) (noWinX , noWinO)) = just (goodBoard (lem-≤-trans (s≤s (lem-≤-suc n)) n<9) ms v 
+          ((lem-nowin-prev X ms m noWinX) , lem-nowin-prev O ms m noWinO))
+        -- ((λ x → noWinX (lem-win-extend X ms m x)) , (λ x → noWinO (lem-win-extend O ms m x))))
 
-    lem-non-zero-means-not-empty : ∀ {b : WorkerBoard} → 0 < wMovesNo b → wIsEmpty b ≡ false
-    lem-non-zero-means-not-empty {worker {c} {zero} n≤9 ms dist} ()
-    lem-non-zero-means-not-empty {worker {.(otherColor c)} {suc .n} n≤9 (_▸_ {c} {n} ms m) dist} (s≤s m≤n) = refl
-
-    -- lemma: if won then wasn't empty
     undoFin : (fin : FinishedBoard) → Board
-    undoFin (draw (worker n≤9 [] dist) (noWinX , noWinO) ())
-    undoFin (draw (worker n≤9 (_▸_ {c} {n} ms m) (dist-cons v y)) (noWinX , noWinO) n≡9) = goodBoard n≤9 ms v 
-          ((λ x → noWinX (lem-win-extend X ms m x)) , (λ x → noWinO (lem-win-extend O ms m x)))
-    undoFin (win c (worker n≤9 [] dist) y) = ⊥-elim (lem-won-empty c y)
-    undoFin (win winner (worker n≤9 (_▸_ {c} {n} ms m) (dist-cons v y)) y') = {!!}
-    -- here we need to have a proof that ms had no winner
-    -- we can either embed the proof somewhere, or try to prove that
-    -- the construction so far guarantees that property
+    undoFin (draw (worker n<9 ms dist noWin m v-m) y y') = goodBoard n<9 ms dist noWin
+    undoFin (win c (worker n<9 ms dist noWin m v-m) y)   = goodBoard n<9 ms dist noWin
  
+    -- I think I can't prove this irrevelence lemma, so I took it as an axiom
+    postulate
+      lem-noWin-irrelv : ∀ {c n} → (cand : Color) (m : Move) → (ms : Moves c n) 
+                         → (f1 : ¬ WonC cand ms) → (f2 : ¬ WonC cand ms) → f1 ≡ f2
+
+
     undo-make-move : (b b' : Board) (m : Move) (vld : m ∈ validMoves b) →
                      makeMove b m vld ≡ inj₁ b' → undo b' ≡ just b
-    undo-make-move b b' m vld x = {!!}
+    undo-make-move (goodBoard n<9 ms dist noWin) b' m vld x with wonDec X (ms ▸ m)
+    undo-make-move (goodBoard n<9 ms dist noWin) b' m vld () | yes p
+    undo-make-move (goodBoard n<9 ms dist noWin) b' m vld x | no ¬p with wonDec O (ms ▸ m)
+    undo-make-move (goodBoard n<9 ms dist noWin) b' m vld () | no ¬p | yes p
+    undo-make-move (goodBoard {c} {n} n<9 ms dist noWin) b' m vld x | no ¬p' | no ¬p with suc n ≟ℕ 9
+    undo-make-move (goodBoard n<9 ms dist noWin) b' m vld () | no ¬p' | no ¬p | yes p
+    undo-make-move (goodBoard {c} {n} n<9 ms dist noWin) b' m vld x | no ¬p0 | no ¬p' | no ¬p with lem-≤-cases-ext (suc n) 9 n<9 ¬p
+    undo-make-move (goodBoard n<9 ms dist (noWinX , noWinO)) 
+                   .(goodBoard lem (ms ▸ m) (dist-cons dist (validMoves-distinct m ms n<9 dist (noWinX , noWinO) vld)) (¬p0 , ¬p')) 
+                   m vld refl | no ¬p0 | no ¬p' | no ¬p | lem 
+               = cong₂ (λ l1 l2 → just (goodBoard l1 ms dist l2)) lem-≤-irrelv 
+                 (cong₂ _,_ (lem-noWin-irrelv X m ms (λ x' → ¬p0 (lem-win-extend X ms m x')) noWinX) 
+                            (lem-noWin-irrelv O m ms (λ x' → ¬p' (lem-win-extend O ms m x')) noWinO))
 
 
+    undo-make-move2 : ∀ (b : Board) (f : FinishedBoard) (m : Move) (vld : m ∈ validMoves b) →
+                                 makeMove b m vld ≡ inj₂ f → undoFin f ≡ b
+    undo-make-move2 (goodBoard n<9 ms dist noWin) f m vld x with wonDec X (ms ▸ m)
+    undo-make-move2 (goodBoard n<9 ms dist noWin) .(win X (worker n<9 ms dist noWin m (validMoves-distinct m ms n<9 dist noWin vld)) p) 
+                                                  m vld refl | yes p = refl
+    undo-make-move2 (goodBoard n<9 ms dist noWin) f m vld x | no ¬p with wonDec O (ms ▸ m)
+    undo-make-move2 (goodBoard n<9 ms dist noWin) .(win O (worker n<9 ms dist noWin m (validMoves-distinct m ms n<9 dist noWin vld)) p) 
+                                                  m vld refl | no ¬p | yes p = refl
+    undo-make-move2 (goodBoard {c} {n} n<9 ms dist noWin) f m vld x | no ¬p' | no ¬p with suc n ≟ℕ 9
+    undo-make-move2 (goodBoard n<9 ms dist noWin) .(draw (worker n<9 ms dist noWin m (validMoves-distinct m ms n<9 dist noWin vld)) (¬p' , ¬p) p) 
+                                                 m vld refl | no ¬p' | no ¬p | yes p = refl
+    undo-make-move2 (goodBoard n<9 ms dist noWin) f m vld () | no ¬p0 | no ¬p' | no ¬p
 
+
+  -- pack all public functions into the GameInterface record
 
   game : GameInterface
   game = record {
@@ -542,15 +545,16 @@ module GameImplementation where
            empty-is-empty   = refl;
            starting-player  = refl;
            no-undo-empty    = refl;
+           all-possible     = refl;
            valid-possible-l = valid-possible-l;
            valid-possible-r = valid-possible-r;
-           undo-make-move   = undo-make-move 
+           undo-make-move   = undo-make-move;
+           undo-make-move2  = undo-make-move2
          }
 
-module Test where
-  open GameInterface (GameImplementation.game) public
+-- make all fields visible
 
-open Test
+open GameInterface (GameImplementation.game)
 
 brd : Board
 brd = emptyBoard
