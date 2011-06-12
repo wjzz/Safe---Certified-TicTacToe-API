@@ -9,6 +9,9 @@ open import Data.Nat.Theorems
 open import Data.Product
 open import Data.Sum
 
+--open import Data.Fin hiding (_<_)
+open import Data.Vec hiding (_∈_)
+
 open import Data.Empty
 open import Relation.Nullary
 open import Relation.Binary
@@ -235,6 +238,10 @@ module GameImplementation where
     movesToList []          = []
     movesToList (ms ▸ move) = move ∷ movesToList ms
 
+    movesToList-length : ∀ {currPlayer : Color}{n : ℕ} (m : Moves currPlayer n) → length (movesToList m) ≡ n
+    movesToList-length [] = refl
+    movesToList-length (ms ▸ m) = cong suc (movesToList-length ms)
+
     -- moves membership relation
 
     infix 4 _∈′_
@@ -260,7 +267,12 @@ module GameImplementation where
     ... | yes p' = yes (∈-drop p')
     ... | no ¬p' = no (lem-∈′-neq m m0 ms ¬p ¬p')
       
-  
+    -- the relation with the list ∈
+
+    movesToList-in : ∀ {currPlayer : Color}{n : ℕ} (ms : Moves currPlayer n) (m : Move) → m ∈′ ms → m ∈ movesToList ms
+    movesToList-in .(ms ▸ m) m (∈-take {c} {n} {.m} {ms}) = ∈-take
+    movesToList-in .(ms ▸ m0) m (∈-drop {c} {n} {.m} {m0} {ms} y) = ∈-drop (movesToList-in ms m y)
+
     -- selectors by color
 
     xMoves : {c : Color}{n : ℕ} → Moves c n → List Move
@@ -304,9 +316,7 @@ module GameImplementation where
     lem-movesByColor-ext {X} O m ms = ⊂-refl (oMoves ms)
     lem-movesByColor-ext {O} O m ms = lem-⊂-ext m (oMoves ms) (oMoves ms) (⊂-refl (oMoves ms))
 
-
     {- BASE subset lem-movesByColor-ext -}
-
 
     -------------------------
     --  winning positions  --
@@ -334,8 +344,8 @@ module GameImplementation where
     lem-nowin-prev : ∀ {c n} → (winner : Color)(ms : Moves c n) → (m : Move) → ¬ WonC winner (ms ▸ m) → ¬ WonC winner ms
     lem-nowin-prev winner ms m x x' = x (lem-win-extend winner ms m x')
     
-
     {- BASE won lem-won-empty lem-nowin-prev lem-win-extend -}
+
 
     P : forall {c n} → Color → Moves c n → List Move → Set
     P cand ms winConfig = winConfig ⊂ movesByColor cand ms
@@ -358,10 +368,10 @@ module GameImplementation where
 
     -- a list is distinct iff all moves are unique
 
-    data distinct : {c : Color}{n : ℕ} → Moves c n → Set where
-      dist-nil  : distinct []
-      dist-cons : {c : Color}{n : ℕ} → {m : Move}{ms : Moves c n} → (v : distinct ms) → 
-                            m ∉′ ms → distinct (ms ▸ m)
+    data distinctm : {c : Color}{n : ℕ} → Moves c n → Set where
+      dist-nil  : distinctm []
+      dist-cons : {c : Color}{n : ℕ} → {m : Move}{ms : Moves c n} → (v : distinctm ms) → 
+                            m ∉′ ms → distinctm (ms ▸ m)
 
     ----------------------------
     --  the WorkerBoard type  --
@@ -372,7 +382,7 @@ module GameImplementation where
     data WorkerBoard : Set where
       worker : {c : Color}{n : ℕ} → (n<9  : n < 9)                 -- at most all fields filled
                                   → (ms   : Moves c n)             -- list of moves
-                                  → (dist : distinct ms)           -- previous moves distinct
+                                  → (dist : distinctm ms)           -- previous moves distinct
                                   → (noWin : noWinner ms)          -- the games had no winner before m
                                   → (m    : Move)                  -- the last move
                                   → (v-m  : m ∉′ ms)               -- m is valid
@@ -398,7 +408,7 @@ module GameImplementation where
     data Board : Set where
       goodBoard : {c : Color}{n : ℕ} → (n<9   : n < 9)                 -- draw impossible
                                      → (ms    : Moves c n  )           -- moves so far
-                                     → (dist  : distinct ms)           -- everything ok so far
+                                     → (dist  : distinctm ms)           -- everything ok so far
                                      → (noWin : noWinner ms)           -- no winner yet
                                      → Board
 
@@ -411,6 +421,9 @@ module GameImplementation where
     isEmpty (goodBoard _ [] _ _)      = true
     isEmpty (goodBoard _ (_ ▸ _) _ _) = false
 
+    movesNo : Board → ℕ
+    movesNo (goodBoard {c} {n} _ _ _ _) = n
+
     currentPlayer : Board → Color
     currentPlayer (goodBoard {c} {n} y ms y' _) = c
 
@@ -421,7 +434,7 @@ module GameImplementation where
     validMoves : Board → List Move
     validMoves (goodBoard n<9 ms dist noWin) = removeDec allMoves (λ move → member′ move ms)
 
-    validMoves-distinct : ∀ {c n} → (m : Move) (ms : Moves c n) (n<9 : n < 9) (dist : distinct ms) (noWin : noWinner ms)
+    validMoves-distinct : ∀ {c n} → (m : Move) (ms : Moves c n) (n<9 : n < 9) (dist : distinctm ms) (noWin : noWinner ms)
                           → m ∈ validMoves (goodBoard {c} {n} n<9 ms dist noWin) → m ∉′ ms
     validMoves-distinct {c} {n} m ms n<9 dist noWin m∈valid m∈ms with removeDec-valid-rev allMoves (λ move → member′ move ms) m m∈valid
     validMoves-distinct m ms n<9 dist noWin m∈valid m∈ms | _ , ¬Pa  = ¬Pa m∈ms
@@ -484,7 +497,6 @@ module GameImplementation where
     undo (goodBoard n<9 [] dist noWin) = nothing
     undo (goodBoard n<9 (_▸_ {c} {n} ms m) (dist-cons v y) (noWinX , noWinO)) = just (goodBoard (lem-≤-trans (s≤s (lem-≤-suc n)) n<9) ms v 
           ((lem-nowin-prev X ms m noWinX) , lem-nowin-prev O ms m noWinO))
-        -- ((λ x → noWinX (lem-win-extend X ms m x)) , (λ x → noWinO (lem-win-extend O ms m x))))
 
     undoFin : (fin : FinishedBoard) → Board
     undoFin (draw (worker n<9 ms dist noWin m v-m) y y') = goodBoard n<9 ms dist noWin
@@ -526,6 +538,95 @@ module GameImplementation where
                                                  m vld refl | no ¬p' | no ¬p | yes p = refl
     undo-make-move2 (goodBoard n<9 ms dist noWin) f m vld () | no ¬p0 | no ¬p' | no ¬p
 
+
+  ----------------------------------------
+  --  Further properties about the api  --
+  ----------------------------------------
+
+  -- certified valid moves
+
+  validMovesVec : (b : Board) → ∃ (λ (k : ℕ) → k > 0 × 9 ≡ movesNo b + k × Vec Move k)
+  validMovesVec (goodBoard {c} {n} n<9 ms dist noWin) with safeMinus n 8 (≤-pred n<9)
+  validMovesVec (goodBoard {c} {n} n<9 ms dist noWin) | k , 8≡n+k = suc k , s≤s z≤n , (trans (cong suc 8≡n+k) (lem-plus-s n k)) , {!!}
+
+  distinctAll : distinct allMoves
+  distinctAll = dist-cons (dist-cons (dist-cons (dist-cons (dist-cons (dist-cons (dist-cons (dist-cons (dist-cons dist-nil (λ ()))
+       lem1) lem2) lem3) lem4) lem5) lem6) lem7) lem8 where
+         lem1 : (x : P32 ∈ P33 ∷ []) → ⊥
+         lem1 (∈-drop ())
+
+         lem2 : P31 ∈ P32 ∷ P33 ∷ [] → ⊥
+         lem2 (∈-drop (∈-drop ()))
+
+         lem3 : P23 ∈ P31 ∷ P32 ∷ P33 ∷ [] → ⊥
+         lem3 (∈-drop (∈-drop (∈-drop ())))
+
+         lem4 : P22 ∈ P23 ∷ P31 ∷ P32 ∷ P33 ∷ [] → ⊥
+         lem4 (∈-drop (∈-drop (∈-drop (∈-drop ()))))
+
+         lem5 : P21 ∈ P22 ∷ P23 ∷ P31 ∷ P32 ∷ P33 ∷ [] → ⊥
+         lem5 (∈-drop (∈-drop (∈-drop (∈-drop (∈-drop ())))))
+
+         lem6 : P13 ∈ P21 ∷ P22 ∷ P23 ∷ P31 ∷ P32 ∷ P33 ∷ [] → ⊥
+         lem6 (∈-drop (∈-drop (∈-drop (∈-drop (∈-drop (∈-drop ()))))))
+
+         lem7 : P12 ∈ P13 ∷ P21 ∷ P22 ∷ P23 ∷ P31 ∷ P32 ∷ P33 ∷ [] → ⊥
+         lem7 (∈-drop (∈-drop (∈-drop (∈-drop (∈-drop (∈-drop (∈-drop ())))))))
+
+         lem8 : P11 ∈ P12 ∷ P13 ∷ P21 ∷ P22 ∷ P23 ∷ P31 ∷ P32 ∷ P33 ∷ [] → ⊥
+         lem8 (∈-drop (∈-drop (∈-drop (∈-drop (∈-drop (∈-drop (∈-drop (∈-drop ()))))))))
+
+
+  noStuckBoard : (b : Board) → ∃ (λ (m : Move) → m ∈ validMoves b)
+  noStuckBoard b with member P11 (validMoves b) _==_
+  ... | yes p = P11 , p
+  noStuckBoard b | no ¬p with member P12 (validMoves b) _==_
+  ... | yes p = P12 , p
+  noStuckBoard b | no ¬p' | no ¬p with member P13 (validMoves b) _==_
+  ... | yes p = P13 , p
+  noStuckBoard b | no ¬p0 | no ¬p' | no ¬p with member P21 (validMoves b) _==_
+  ... | yes p = P21 , p
+  noStuckBoard b | no ¬p1 | no ¬p0 | no ¬p' | no ¬p with member P22 (validMoves b) _==_
+  ... | yes p = P22 , p
+  noStuckBoard b | no ¬p2 | no ¬p1 | no ¬p0 | no ¬p' | no ¬p with member P23 (validMoves b) _==_
+  ... | yes p = P23 , p
+  noStuckBoard b | no ¬p3 | no ¬p2 | no ¬p1 | no ¬p0 | no ¬p' | no ¬p with member P31 (validMoves b) _==_
+  ... | yes p = P31 , p
+  noStuckBoard b | no ¬p4 | no ¬p3 | no ¬p2 | no ¬p1 | no ¬p0 | no ¬p' | no ¬p with member P32 (validMoves b) _==_
+  ... | yes p = P32 , p
+  noStuckBoard b | no ¬p5 | no ¬p4 | no ¬p3 | no ¬p2 | no ¬p1 | no ¬p0 | no ¬p' | no ¬p with member P33 (validMoves b) _==_
+  ... | yes p = P33 , p
+  noStuckBoard (goodBoard {c} {n} n<9 ms dist noWin) | no ¬p6 | no ¬p5 | no ¬p4 | no ¬p3 | no ¬p2 | no ¬p1 | no ¬p0 | no ¬p' | no ¬p 
+    = ⊥-elim (lem-both-≤-<-impossible final-lem n<9) where
+    helper : (m : Move) → m ∉ validMoves (goodBoard n<9 ms dist noWin) → m ∈′ ms
+    helper m ¬p = removeDec-valid2 allMoves _==_ ((λ move → member′ move ms)) m (allMovesValid m) ¬p
+
+    allMovesInMs' : ∀ (m : Move) → m ∈′ ms
+    allMovesInMs' P11 = helper P11 ¬p6
+    allMovesInMs' P12 = helper P12 ¬p5
+    allMovesInMs' P13 = helper P13 ¬p4
+    allMovesInMs' P21 = helper P21 ¬p3
+    allMovesInMs' P22 = helper P22 ¬p2
+    allMovesInMs' P23 = helper P23 ¬p1
+    allMovesInMs' P31 = helper P31 ¬p0
+    allMovesInMs' P32 = helper P32 ¬p'
+    allMovesInMs' P33 = helper P33 ¬p
+
+    allMovesInMs : ∀ (m : Move) → m ∈ movesToList ms
+    allMovesInMs m = movesToList-in ms m (allMovesInMs' m)
+
+    len : length (movesToList ms) ≡ n
+    len = movesToList-length ms
+
+    sub : P11 ∷ P12 ∷ P13 ∷ P21 ∷ P22 ∷ P23 ∷ P31 ∷ P32 ∷ P33 ∷ [] ⊂ movesToList ms
+    sub = cons (cons (cons (cons (cons (cons (cons (cons (cons nil (allMovesInMs P33))(allMovesInMs P32))(allMovesInMs P31))
+          (allMovesInMs P23))(allMovesInMs P22))(allMovesInMs P21))(allMovesInMs P13))(allMovesInMs P12)) (allMovesInMs P11)
+
+    lem : length allMoves ≤ length (movesToList ms)
+    lem = lem-subset-length allMoves (movesToList ms) _==_ distinctAll sub
+
+    final-lem : 9 ≤ n
+    final-lem = subst (λ m → 9 ≤ m) len lem
 
   -----------------------------------------
   --  Utilities for certified searching  --
@@ -608,8 +709,17 @@ brd = emptyBoard
 empt : Bool
 empt = isEmpty emptyBoard
 
+
 t : Maybe Result
 t = GameImplementation.bestResultColor 9 X (inj₁ emptyBoard)
 
 t2 : Maybe Result
-t2 = GameImplementation.bestResultColor 6 X (inj₁ emptyBoard)
+t2 = GameImplementation.bestResultColor 5 X (inj₁ emptyBoard)
+
+{-
+this type checks after around 30 minutes
+
+lemma : t2 ≡ just (Win X)
+lemma = refl
+
+-}
