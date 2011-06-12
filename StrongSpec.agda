@@ -527,6 +527,52 @@ module GameImplementation where
     undo-make-move2 (goodBoard n<9 ms dist noWin) f m vld () | no ¬p0 | no ¬p' | no ¬p
 
 
+  -----------------------------------------
+  --  Utilities for certified searching  --
+  -----------------------------------------
+
+  maxByColor : Color → Result → Result → Result
+  maxByColor X (Win X) r2 = Win X
+  maxByColor X (Win O) r2 = r2
+  maxByColor X Draw (Win X) = Win X
+  maxByColor X Draw (Win O) = Draw
+  maxByColor X Draw Draw = Draw
+  maxByColor O (Win X) r2 = r2
+  maxByColor O (Win O) r2 = Win O
+  maxByColor O Draw (Win X) = Draw
+  maxByColor O Draw (Win O) = Win O
+  maxByColor O Draw Draw = Draw
+
+  maximumByColor : Color → Maybe Result → List (Maybe Result) -> Maybe Result
+  maximumByColor c r [] = r
+  maximumByColor c r (just x ∷ xs) with maximumByColor c r xs
+  maximumByColor c r (just x' ∷ xs) | just x = just (maxByColor c x' x)
+  maximumByColor c r (just x ∷ xs)  | nothing = just x
+  maximumByColor c r (nothing ∷ xs) = maximumByColor c r xs 
+
+  map-in : {A B : Set} → (l : List A) → (f : (a : A) → a ∈ l → B) → List B
+  map-in [] _ = []
+  map-in {A} {B} (x ∷ xs) f = f x ∈-take ∷ map-in xs f' where
+    f' : (a : A) → a ∈ xs → B
+    f' a a∈xs = f a (∈-drop a∈xs)
+
+  bestResultColor : ℕ → Color → Board ⊎ FinishedBoard → Maybe Result
+  bestResultColor 0 c b = nothing
+  bestResultColor (suc n) c (inj₂ fin) = just (getResult fin)
+  bestResultColor (suc n) c (inj₁ brd) with inspect (validMoves brd)
+  bestResultColor (suc n) c (inj₁ brd) | [] with-≡ eq = nothing
+  bestResultColor (suc n) c (inj₁ brd) | (x ∷ xs) with-≡ eq = maximumByColor c r l where
+    r : Maybe Result
+    r = bestResultColor n (otherColor c) (makeMove brd x (subst (λ p → x ∈ p) (sym eq) ∈-take))
+
+    lem : ∀ {A : Set} → (l1 l2 : List A) → (a : A) → (a ∈ l1) → l1 ≡ l2 → a ∈ l2
+    lem .l2 l2 a x' refl = x'   
+
+    l : List (Maybe Result)
+    l = map-in xs (λ m inn → bestResultColor n (otherColor c) (makeMove brd m (lem ((x ∷ xs)) ((validMoves brd)) m (∈-drop inn) (sym eq))))
+    
+  
+
   -- pack all public functions into the GameInterface record
 
   game : GameInterface
@@ -562,3 +608,8 @@ brd = emptyBoard
 empt : Bool
 empt = isEmpty emptyBoard
 
+t : Maybe Result
+t = GameImplementation.bestResultColor 9 X (inj₁ emptyBoard)
+
+t2 : Maybe Result
+t2 = GameImplementation.bestResultColor 6 X (inj₁ emptyBoard)
