@@ -718,6 +718,17 @@ module GameImplementation where
     node : (b : Board) → Vec GameTree (length (validMoves b)) → GameTree
 -}
 
+  -- before we dive into the game tree definition
+  -- we need to show that Board ⊎ FinishedBoard can be well-founded
+  -- because we need to recurse by the following scheme:
+  --  inj2 fin = result
+  --  inj1 b = f [makeMove b m p | m ∈ validMoves b , p : proof]
+  
+  -- so we need to make sure that (makeMove b m p) is smaller that b!
+
+  -- we start by introducing a measure that will decrease when moves are added
+  -- this is possible, because the total no of moves has an upper bound (9)
+
   measureB : Board → ℕ
   measureB b = 9 ∸ movesNo b
 
@@ -727,6 +738,8 @@ module GameImplementation where
   measure : Board ⊎ FinishedBoard → ℕ
   measure (inj₁ b) = measureB b
   measure (inj₂ f) = 0
+
+  -- adding a move results in a smaller measure
 
   lem-measure : ∀ (b : Board)(m : Move)(p : m ∈ validMoves b) → (measure (makeMove b m p)) < measure (inj₁ b)
   lem-measure (goodBoard n<9 ms dist noWin) m p with wonDec X (ms ▸ m)
@@ -741,6 +754,8 @@ module GameImplementation where
   lem-measure' b m p = <⇒<′ (lem-measure b m p)
 
   -- well founded stuff
+  -- we don't have to start from scratch, because _<′_ is well-founded 
+  -- (and that is proven in the std-lib :>)
 
   _≪_ : Rel (Board ⊎ FinishedBoard) zero
   b1 ≪ b2 = measure b1 <′ measure b2
@@ -748,6 +763,7 @@ module GameImplementation where
   wf-≪ : Well-founded _≪_
   wf-≪ = well-founded <-well-founded where
    open Inverse-image (measure)
+
 
   boardSuccessors : (b : Board) → List (Board ⊎ FinishedBoard)
   boardSuccessors b = map-in (validMoves b) (λ m m∈valid → makeMove b m m∈valid)
@@ -769,7 +785,8 @@ module GameImplementation where
   recursor = wfRec where
     open Induction.WellFounded.All wf-≪
 
-  {-
+
+  -- the GameTree itself
 
   data GameTree : Set where
     leaf : FinishedBoard → GameTree
@@ -786,61 +803,36 @@ module GameImplementation where
 
   -- now we can do some traversals on the tree
 
+  -- all possible games of TicTacToe
+  -- the leaves represent all possible final positions in the game of TicTacToe
+  -- according to the Haskell & SML implementation (and also Wikipedia)
+  -- there should be 255168 leaves!
+
   allGames : GameTree
   allGames = generateTree (inj₁ emptyBoard)
 
-  depth : GameTree → ℕ
-  depth (leaf y) = 0
---  depth (node b (x ∷ []) y) = 1 + depth x
---  depth (node b (x ∷ xs) y) = 1 + depth (node b xs y)
---Data.List.sum (Data.List.map depth xs) -- Data.List.foldl Data.Nat._⊔_ (depth x) (Data.List.map depth xs)
+  mutual 
+    depth : GameTree → ℕ
+    depth (leaf y) = 0
+    depth (node b (x ∷ xs) y) = depthNode (depth x) xs
 
-  -- impossible case, the successor list can't be empty
-  depth (node b [] y) with inspect (validMoves b) | noStuckBoard b
-  depth (node b [] y) | []       with-≡ eq | move , p rewrite eq = ⊥-elim (lem-empty move p)
-  depth (node b [] y) | (m ∷ ms) with-≡ eq | move , p rewrite eq = ⊥-elim (lem-zero-neq-suc y)
-  depth (node b xs y) = Data.List.sum (Data.List.map depth xs)
+    -- impossible case, the successor list can't be empty
+    depth (node b [] y) with inspect (validMoves b) | noStuckBoard b
+    depth (node b [] y) | []       with-≡ eq | move , p rewrite eq = ⊥-elim (lem-empty move p)
+    depth (node b [] y) | (m ∷ ms) with-≡ eq | move , p rewrite eq = ⊥-elim (lem-zero-neq-suc y)
+
+    depthNode : ℕ → List GameTree → ℕ
+    depthNode d []       = 1 + d
+    depthNode d (x ∷ xs) = depthNode (max d (depth x)) xs
   
-  -}
+  mutual
+    leavesNo : GameTree → ℕ
+    leavesNo (leaf f) = 1
+    leavesNo (node b xs y) = leavesNoNode 0 xs
 
-  data GameTree : Set where
-    leaf : FinishedBoard → GameTree
-    node : (b : Board) → (l : List GameTree) → GameTree
-
-  generateTreeIter : (x : Board ⊎ FinishedBoard)(rec : (x0 : Board ⊎ FinishedBoard) → (x1 : x0 ≪ x) → GameTree) → GameTree
-  generateTreeIter (inj₂ fin) rec = leaf fin
-  generateTreeIter (inj₁ b)   rec = node b (map-in (boardSuccessors b)(λ a val → rec a (lem-successors-in b a val))) 
-
-  generateTree : Board ⊎ FinishedBoard → GameTree
-  generateTree = recursor (λ x → GameTree) generateTreeIter
-
-  -- now we can do some traversals on the tree
-
-  allGames : GameTree
-  allGames = generateTree (inj₁ emptyBoard)
-
-{- agda doesn't believe this function terminates
-  depth : GameTree → ℕ
-  depth (leaf y) = 0
-  depth (node b []) = 1000
-  depth (node b (x ∷ xs)) with inspect xs
-  depth (node b (x ∷ xs)) | [] with-≡ eq = depth x
-  depth (node b (x ∷ xs)) | (x' ∷ xs') with-≡ eq rewrite eq = max (depth x) (depth (node b xs'))
--}
-
-  depthM : GameTree → Maybe ℕ
-  depthM (leaf y) = just 0
-  depthM (node b []) = nothing
-  depthM (node b (x ∷ xs)) with depthM (node b xs) | depthM x
-  ... | nothing | nothing = nothing
-  ... | just r  | nothing = just r
-  ... | nothing | just r' = just (1 + r')
-  ... | just r  | just r' = just (max r (1 + r'))
-
-  {-
-  depth (node b (x ∷ [])) = 1 + depth x
-  depth (node b (x ∷ x' ∷ xs)) = max (depth x) (depth (node b xs))
-  -}
+    leavesNoNode : ℕ → List GameTree → ℕ
+    leavesNoNode n [] = n
+    leavesNoNode n (x ∷ xs) = leavesNoNode (n + leavesNo x) xs
 
   ------------------------
   --  A testing helper  --
@@ -906,12 +898,15 @@ lemma = refl
 -}
 
 b : Board ⊎ FinishedBoard 
-b = GameImplementation.tryMoves (inj₁ emptyBoard) (P11 ∷ P12 ∷ [])
+b = GameImplementation.tryMoves (inj₁ emptyBoard) (P11 ∷ P12 ∷ P13 ∷ P21 ∷ P22 ∷ P23 ∷ P31 ∷ [])
 
 b2 : Bool
 b2 with b
 ... | inj₁ _ = true
 ... | inj₂ _ = false
 
-n : Maybe ℕ
-n = GameImplementation.depthM (GameImplementation.generateTree b)
+leaves : ℕ
+leaves = GameImplementation.leavesNo (GameImplementation.generateTree b)
+
+--n : Maybe ℕ
+--n = GameImplementation.depthM (GameImplementation.generateTree b)
