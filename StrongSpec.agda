@@ -17,6 +17,8 @@ open import Relation.Nullary
 open import Relation.Binary
 open import Relation.Binary.PropositionalEquality
 
+open ≡-Reasoning
+
 {- BASE IMPORT Data.Nat.Theorems  -}
 {- BASE IMPORT Data.List.Theorems -}
 
@@ -657,6 +659,24 @@ module GameImplementation where
     f' : (a : A) → a ∈ xs → B
     f' a a∈xs = f a (∈-drop a∈xs)
 
+  lem-length-map-in :  {A B : Set} → (l : List A) → (f : (a : A) → a ∈ l → B) → length (map-in l f) ≡ length l
+  lem-length-map-in []       f = refl
+  lem-length-map-in (x ∷ xs) f = cong suc (lem-length-map-in xs (λ a x' → f a (∈-drop x')))
+
+  lem-empty : ∀ {A : Set} → (a : A) → a ∉ []
+  lem-empty a ()
+
+  bestResultColor' : ℕ → Color → Board ⊎ FinishedBoard → Maybe Result
+  bestResultColor' zero c b = nothing
+  bestResultColor' (suc n) c (inj₂ fin) = just (getResult fin)
+  bestResultColor' (suc n) c (inj₁ brd) with inspect (validMoves brd)
+  bestResultColor' (suc n) c (inj₁ brd) | [] with-≡ eq with noStuckBoard brd
+  bestResultColor' (suc n) c (inj₁ brd) | [] with-≡ eq | move , p rewrite eq = ⊥-elim (lem-empty move p)
+  bestResultColor' (suc n) c (inj₁ brd) | (x ∷ xs) with-≡ eq = {!!}
+  
+
+  
+
   bestResultColor : ℕ → Color → Board ⊎ FinishedBoard → Maybe Result
   bestResultColor 0 c b = nothing
   bestResultColor (suc n) c (inj₂ fin) = just (getResult fin)
@@ -672,8 +692,55 @@ module GameImplementation where
     l : List (Maybe Result)
     l = map-in xs (λ m inn → bestResultColor n (otherColor c) (makeMove brd m (lem ((x ∷ xs)) ((validMoves brd)) m (∈-drop inn) (sym eq))))
     
-  
+  -------------------------------------------
+  --  An approach with explicit game-tree  --
+  -------------------------------------------
+{-
+  data GameTree : Set where
+    leaf : FinishedBoard → GameTree
+    node : (b : Board) → Vec GameTree (length (validMoves b)) → GameTree
+-}
 
+  measureB : Board → ℕ
+  measureB b = 9 ∸ movesNo b
+
+  lem-measureB : ∀ (b : Board) → 1 ≤ measureB  b
+  lem-measureB (goodBoard {c} {n} n<9 ms dist noWin) = lem-minus-positive n 9 n<9
+
+  measure : Board ⊎ FinishedBoard → ℕ
+  measure (inj₁ b) = measureB b
+  measure (inj₂ f) = 0
+
+  lem-measure : ∀ (b : Board)(m : Move)(p : m ∈ validMoves b) → (measure (makeMove b m p)) < measure (inj₁ b)
+  lem-measure (goodBoard n<9 ms dist noWin) m p with wonDec X (ms ▸ m)
+  lem-measure (goodBoard {c} {n} n<9 ms dist noWin) m p' | yes p = lem-minus-positive n 9 n<9
+  lem-measure (goodBoard n<9 ms dist noWin) m p' | no ¬p with wonDec O (ms ▸ m)
+  lem-measure (goodBoard {c} {n} n<9 ms dist noWin) m p' | no ¬p | yes p = lem-minus-positive n 9 n<9
+  lem-measure (goodBoard {c} {n} n<9 ms dist noWin) m p' | no ¬p' | no ¬p with suc n ≟ℕ  9
+  lem-measure (goodBoard {c} {n} n<9 ms dist noWin) m p' | no ¬p' | no ¬p | yes p rewrite lem-suc-eq p = s≤s z≤n
+  lem-measure (goodBoard {c} {n} n<9 ms dist noWin) m p' | no ¬p0 | no ¬p' | no ¬p rewrite lem-minus-eq 8 n (≤-pred n<9) = lem-≤-refl
+
+
+  data GameTree : Set where
+    leaf : FinishedBoard → GameTree
+    node : (b : Board) → (l : List GameTree) → (length l ≡ length (validMoves b)) → GameTree
+
+  boardSuccessors : (b : Board) → List (Board ⊎ FinishedBoard)
+  boardSuccessors b = map-in (validMoves b) (λ m m∈valid → makeMove b m m∈valid)
+
+  mutual
+    -- generateTree wont loop because 9 - (movesNo b) is decreasing
+    generateTreeIter : (b : Board) → (n : ℕ) → (n ≡ movesNo b) → GameTree
+    generateTreeIter (goodBoard {c} {n} n<9 ms dist noWin) n' p = {!!}
+
+    generateTree : Board ⊎ FinishedBoard → GameTree
+    generateTree (inj₂ fin) = leaf fin
+    generateTree (inj₁ brd) = generateTreeIter brd (movesNo brd) refl 
+
+    {-node brd (Data.List.map generateTree (boardSuccessors brd)) 
+    (trans (sym (lem-length-map generateTree (boardSuccessors brd))) (lem-length-map-in (validMoves brd)
+                                                                        (λ a x → makeMoveWorker (addMove brd a x))))
+-}
   -- pack all public functions into the GameInterface record
 
   game : GameInterface
