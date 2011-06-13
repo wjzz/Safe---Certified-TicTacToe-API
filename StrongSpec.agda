@@ -669,6 +669,16 @@ module GameImplementation where
   lem-length-map-in []       f = refl
   lem-length-map-in (x ∷ xs) f = cong suc (lem-length-map-in xs (λ a x' → f a (∈-drop x')))
 
+  lem-map-in-inv : {A B : Set} → {a0 : B} → (l : List A) → (f : (a : A) → a ∈ l → B) → a0 ∈ map-in l f →
+     ∃₂ (λ (a : A) (p : a ∈ l) → a0 ≡ f a p)
+  lem-map-in-inv [] f () 
+  lem-map-in-inv (x ∷ xs) f ∈-take = x , ∈-take , refl
+  lem-map-in-inv {A} {B} {a0} (x ∷ xs) f (∈-drop y) with lem-map-in-inv xs f' y where
+    f' : (a : A) (a∈xs : a ∈ xs) → B
+    f' a a∈xs = f a (∈-drop a∈xs)
+  lem-map-in-inv {A} {B} {a0} (x ∷ xs) f (∈-drop y) | a , a∈xs , a0≡a = a , ∈-drop a∈xs , a0≡a
+  
+
   lem-empty : ∀ {A : Set} → (a : A) → a ∉ []
   lem-empty a ()
 
@@ -747,7 +757,7 @@ module GameImplementation where
 
   lem-successors-ex : (b : Board) (b' : Board ⊎ FinishedBoard) → b' ∈ boardSuccessors b → 
       ∃₂ (λ (m : Move) (p : m ∈ validMoves b) → b' ≡ makeMove b m p)
-  lem-successors-ex b b' b'∈suc = {!!}
+  lem-successors-ex b b' b'∈map = lem-map-in-inv (validMoves b) (λ m m∈valid → makeMove b m m∈valid) b'∈map
 
   lem-successors-in : (b : Board) (b' : Board ⊎ FinishedBoard) → b' ∈ boardSuccessors b → b' ≪ (inj₁ b)
   lem-successors-in b b' b'∈suc with lem-successors-ex b b' b'∈suc
@@ -821,11 +831,11 @@ module GameImplementation where
   depthM : GameTree → Maybe ℕ
   depthM (leaf y) = just 0
   depthM (node b []) = nothing
-  depthM (node b (x ∷ xs)) with depthM (node b xs)
-  ... | nothing = depthM x
-  ... | just r  with depthM x
-  ... | nothing = just r
-  ... | just r' = just (max r r')
+  depthM (node b (x ∷ xs)) with depthM (node b xs) | depthM x
+  ... | nothing | nothing = nothing
+  ... | just r  | nothing = just r
+  ... | nothing | just r' = just (1 + r')
+  ... | just r  | just r' = just (max r (1 + r'))
 
   {-
   depth (node b (x ∷ [])) = 1 + depth x
@@ -890,10 +900,18 @@ t2 = GameImplementation.bestResultColor 5 X (inj₁ emptyBoard)
 {-
 this type checks after around 30 minutes
 
-lemma : t2 ≡ just (Win X)
+lemma : t2 ≡ just (Win 
 lemma = refl
 
 -}
 
 b : Board ⊎ FinishedBoard 
-b = GameImplementation.tryMoves (inj₁ emptyBoard) (P11 ∷ P12 ∷ P13 ∷ P21 ∷ P22 ∷ P23 ∷ [])
+b = GameImplementation.tryMoves (inj₁ emptyBoard) (P11 ∷ P12 ∷ [])
+
+b2 : Bool
+b2 with b
+... | inj₁ _ = true
+... | inj₂ _ = false
+
+n : Maybe ℕ
+n = GameImplementation.depthM (GameImplementation.generateTree b)
