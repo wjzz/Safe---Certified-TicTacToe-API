@@ -4,7 +4,7 @@ open import Data.Maybe
 open import Data.Bool
 open import Data.List
 open import Data.List.Theorems
-open import Data.Nat renaming (_≟_ to _≟ℕ_)
+open import Data.Nat renaming (_≟_ to _≟ℕ_; _⊔_ to max)
 open import Data.Nat.Theorems
 open import Data.Product
 open import Data.Sum
@@ -759,6 +759,8 @@ module GameImplementation where
   recursor = wfRec where
     open Induction.WellFounded.All wf-≪
 
+  {-
+
   data GameTree : Set where
     leaf : FinishedBoard → GameTree
     node : (b : Board) → (l : List GameTree) → (length l ≡ length (validMoves b)) → GameTree
@@ -779,15 +781,69 @@ module GameImplementation where
 
   depth : GameTree → ℕ
   depth (leaf y) = 0
-  depth (node b (x ∷ xs) y) = 1 + Data.List.sum (Data.List.map depth xs) -- Data.List.foldl Data.Nat._⊔_ (depth x) (Data.List.map depth xs)
+--  depth (node b (x ∷ []) y) = 1 + depth x
+--  depth (node b (x ∷ xs) y) = 1 + depth (node b xs y)
+--Data.List.sum (Data.List.map depth xs) -- Data.List.foldl Data.Nat._⊔_ (depth x) (Data.List.map depth xs)
 
   -- impossible case, the successor list can't be empty
   depth (node b [] y) with inspect (validMoves b) | noStuckBoard b
   depth (node b [] y) | []       with-≡ eq | move , p rewrite eq = ⊥-elim (lem-empty move p)
   depth (node b [] y) | (m ∷ ms) with-≡ eq | move , p rewrite eq = ⊥-elim (lem-zero-neq-suc y)
+  depth (node b xs y) = Data.List.sum (Data.List.map depth xs)
+  
+  -}
+
+  data GameTree : Set where
+    leaf : FinishedBoard → GameTree
+    node : (b : Board) → (l : List GameTree) → GameTree
+
+  generateTreeIter : (x : Board ⊎ FinishedBoard)(rec : (x0 : Board ⊎ FinishedBoard) → (x1 : x0 ≪ x) → GameTree) → GameTree
+  generateTreeIter (inj₂ fin) rec = leaf fin
+  generateTreeIter (inj₁ b)   rec = node b (map-in (boardSuccessors b)(λ a val → rec a (lem-successors-in b a val))) 
+
+  generateTree : Board ⊎ FinishedBoard → GameTree
+  generateTree = recursor (λ x → GameTree) generateTreeIter
+
+  -- now we can do some traversals on the tree
+
+  allGames : GameTree
+  allGames = generateTree (inj₁ emptyBoard)
+
+{- agda doesn't believe this function terminates
+  depth : GameTree → ℕ
+  depth (leaf y) = 0
+  depth (node b []) = 1000
+  depth (node b (x ∷ xs)) with inspect xs
+  depth (node b (x ∷ xs)) | [] with-≡ eq = depth x
+  depth (node b (x ∷ xs)) | (x' ∷ xs') with-≡ eq rewrite eq = max (depth x) (depth (node b xs'))
+-}
+
+  depthM : GameTree → Maybe ℕ
+  depthM (leaf y) = just 0
+  depthM (node b []) = nothing
+  depthM (node b (x ∷ xs)) with depthM (node b xs)
+  ... | nothing = depthM x
+  ... | just r  with depthM x
+  ... | nothing = just r
+  ... | just r' = just (max r r')
+
+  {-
+  depth (node b (x ∷ [])) = 1 + depth x
+  depth (node b (x ∷ x' ∷ xs)) = max (depth x) (depth (node b xs))
+  -}
+
+  ------------------------
+  --  A testing helper  --
+  ------------------------
+
+  tryMoves : Board ⊎ FinishedBoard → List Move → Board ⊎ FinishedBoard
+  tryMoves (inj₂ f) l  = inj₂ f
+  tryMoves (inj₁ b) [] = inj₁ b
+  tryMoves (inj₁ b) (m ∷ ms) with member m (validMoves b) _==_
+  ...                        | no ¬p = inj₁ b
+  ...                        | yes p = tryMoves (makeMove b m p) ms
 
   
-
 
   -- pack all public functions into the GameInterface record
 
@@ -838,3 +894,6 @@ lemma : t2 ≡ just (Win X)
 lemma = refl
 
 -}
+
+b : Board ⊎ FinishedBoard 
+b = GameImplementation.tryMoves (inj₁ emptyBoard) (P11 ∷ P12 ∷ P13 ∷ P21 ∷ P22 ∷ P23 ∷ [])
