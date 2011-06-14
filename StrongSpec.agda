@@ -636,6 +636,35 @@ module GameImplementation where
     final-lem : 9 ≤ n
     final-lem = subst (λ m → 9 ≤ m) len lem
 
+  validMovesLength : ∀ (b : Board) → length (validMoves b) ≡ 9 ∸ movesNo b
+  validMovesLength = {!!}
+
+  movesNoMakeMove : ∀ (b b' : Board)(m : Move) → (p : m ∈ validMoves b) → makeMove b m p ≡ inj₁ b' → suc (movesNo b) ≡ movesNo b'
+  movesNoMakeMove (goodBoard {c} {n} n<9 ms dist noWin) b' m p b'-makeMove-b with wonDec X (ms ▸ m)
+  movesNoMakeMove (goodBoard n<9 ms dist noWin) b' m p' () | yes p
+  movesNoMakeMove (goodBoard n<9 ms dist noWin) b' m p b'-makeMove-b | no ¬p with wonDec O (ms ▸ m)
+  movesNoMakeMove (goodBoard n<9 ms dist noWin) b' m p' () | no ¬p | yes p
+  movesNoMakeMove (goodBoard {c} {n} n<9 ms dist noWin) b' m p b'-makeMove-b | no ¬p' | no ¬p with suc n ≟ℕ 9
+  movesNoMakeMove (goodBoard n<9 ms dist noWin) b' m p' () | no ¬p' | no ¬p | yes p
+  movesNoMakeMove (goodBoard {c} {n} n<9 ms dist noWin) b' m p b'-makeMove-b | no ¬p0 | no ¬p' | no ¬p with lem-≤-cases-ext (suc n) 9 n<9 ¬p
+  movesNoMakeMove (goodBoard n<9 ms dist noWin) .(goodBoard (s≤s m≤n) (ms ▸ m) 
+   (dist-cons dist (validMoves-distinct m ms n<9 dist noWin p)) (¬p0 , ¬p')) m p refl | no ¬p0 | no ¬p' | no ¬p | s≤s m≤n = refl
+
+  
+  ------------------------
+  --  A testing helper  --
+  ------------------------
+
+  tryMoves : Board ⊎ FinishedBoard → List Move → Board ⊎ FinishedBoard
+  tryMoves (inj₂ f) l  = inj₂ f
+  tryMoves (inj₁ b) [] = inj₁ b
+  tryMoves (inj₁ b) (m ∷ ms) with member m (validMoves b) _==_
+  ...                        | no ¬p = inj₁ b
+  ...                        | yes p = tryMoves (makeMove b m p) ms
+
+
+  --gameWillFinish : ∀ (l : List Move) → length l 
+
   -----------------------------------------
   --  Utilities for certified searching  --
   -----------------------------------------
@@ -883,21 +912,7 @@ module GameImplementation where
   bestResultOpt b = resultColorOpt (color b) (generateTree b) where
     color : Board ⊎ FinishedBoard → Color
     color (inj₁ b) = currentPlayer b
-    color (inj₂ f) = X --doesn't matter
-
-
-  ------------------------
-  --  A testing helper  --
-  ------------------------
-
-  tryMoves : Board ⊎ FinishedBoard → List Move → Board ⊎ FinishedBoard
-  tryMoves (inj₂ f) l  = inj₂ f
-  tryMoves (inj₁ b) [] = inj₁ b
-  tryMoves (inj₁ b) (m ∷ ms) with member m (validMoves b) _==_
-  ...                        | no ¬p = inj₁ b
-  ...                        | yes p = tryMoves (makeMove b m p) ms
-
-  
+    color (inj₂ f) = X --doesn't matter  
 
   -- pack all public functions into the GameInterface record
 
@@ -961,8 +976,9 @@ leaves : ℕ
 leaves = GameImplementation.leavesNo --(GameImplementation.generateTree (inj₁ emptyBoard)) -- 
          (GameImplementation.generateTree b)
 -}
+{-
 r : Result
 r = GameImplementation.bestResultOpt (inj₁ emptyBoard) -- (GameImplementation.tryMoves (inj₁ emptyBoard) (P11 ∷ []))
-
+-}
 --n : Maybe ℕ
 --n = GameImplementation.depthM (GameImplementation.generateTree b)
