@@ -1,0 +1,34 @@
+agda2_mode_code (agda2-status-action "Checked")
+agda2_mode_code (agda2-info-action "*All Goals*" "")
+agda2_mode_code (agda2-goals-action '())
+agda2_mode_code (agda2-status-action "Checked")
+agda2_mode_code (agda2-info-action "*Normal Form*" "true")
+agda2_mode_code (agda2-goals-action '())
+agda2_mode_code (agda2-status-action "Checked")
+agda2_mode_code (agda2-info-action "*Normal Form*" "Draw")
+agda2_mode_code (agda2-goals-action '())
+3,275,566,021,440 bytes allocated in the heap
+ 362,340,233,824 bytes copied during GC
+     301,396,872 bytes maximum residency (376 sample(s))
+       7,397,920 bytes maximum slop
+             847 MB total memory in use (0 MB lost due to fragmentation)
+
+  Generation 0: 6247768 collections,     0 parallel, 386.96s, 806.68s elapsed
+  Generation 1:   376 collections,     0 parallel, 184.34s, 184.67s elapsed
+
+  INIT  time    0.00s  (  0.00s elapsed)
+  MUT   time  2620.40s  (3179.67s elapsed)
+  GC    time  571.30s  (991.35s elapsed)
+  EXIT  time    0.00s  (  0.00s elapsed)
+  Total time  3191.70s  (4171.01s elapsed)
+
+  %GC time      17.9%  (23.8% elapsed)
+
+  Alloc rate    1,250,025,195 bytes per MUT second
+
+  Productivity  82.1% of total user, 62.8% of total elapsed
+
+
+real	69m31.069s
+user	53m11.710s
+sys	16m19.290s
