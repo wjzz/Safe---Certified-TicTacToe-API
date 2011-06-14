@@ -834,6 +834,33 @@ module GameImplementation where
     leavesNoNode n [] = n
     leavesNoNode n (x ∷ xs) = leavesNoNode (n + leavesNo x) xs
 
+  --------------------------------------------
+  --  Solving TicTacToe using the GameTree  --
+  --------------------------------------------
+  {-
+  maxByColor : Color → Result → Result → Result
+  -}
+
+  mutual
+    resultColor : Color → GameTree → Result
+    resultColor c (leaf fin) = getResult fin
+    resultColor c (node b (x ∷ xs) y) = resultNode c (resultColor (otherColor c) x) xs
+  
+    -- impossible case
+    resultColor c (node b [] y) with inspect (validMoves b) | noStuckBoard b
+    ... | []       with-≡ eq | move , p rewrite eq = ⊥-elim (lem-empty move p)
+    ... | (m ∷ ms) with-≡ eq | move , p rewrite eq = ⊥-elim (lem-zero-neq-suc y)
+    
+    resultNode : Color → Result → List GameTree → Result
+    resultNode c r []       = r
+    resultNode c r (x ∷ xs) = resultNode c (maxByColor c r (resultColor (otherColor c) x)) xs
+
+  bestResult : Board ⊎ FinishedBoard → Result
+  bestResult b = resultColor (color b) (generateTree b) where
+    color : Board ⊎ FinishedBoard → Color
+    color (inj₁ b) = currentPlayer b
+    color (inj₂ f) = X --doesn't matter
+
   ------------------------
   --  A testing helper  --
   ------------------------
@@ -898,7 +925,7 @@ lemma = refl
 -}
 
 b : Board ⊎ FinishedBoard 
-b = GameImplementation.tryMoves (inj₁ emptyBoard) (P11 ∷ P12 ∷ P13 ∷ P21 ∷ P22 ∷ P23 ∷ P31 ∷ [])
+b = GameImplementation.tryMoves (inj₁ emptyBoard) (P11 ∷ P12 ∷ P13 ∷ P21 ∷ P22 ∷ P23  ∷ P31  ∷ [])
 
 b2 : Bool
 b2 with b
@@ -906,7 +933,11 @@ b2 with b
 ... | inj₂ _ = false
 
 leaves : ℕ
-leaves = GameImplementation.leavesNo (GameImplementation.generateTree b)
+leaves = GameImplementation.leavesNo --(GameImplementation.generateTree (inj₁ emptyBoard)) -- 
+         (GameImplementation.generateTree b)
+
+r : Result
+r = GameImplementation.bestResult b
 
 --n : Maybe ℕ
 --n = GameImplementation.depthM (GameImplementation.generateTree b)
