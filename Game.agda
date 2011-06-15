@@ -1,4 +1,4 @@
-module StrongSpec where
+module Game where
 
 open import Data.Maybe
 open import Data.Bool
