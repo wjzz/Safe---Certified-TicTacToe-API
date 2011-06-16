@@ -382,16 +382,13 @@ module GameTheorems where
   lem-map-in-inv {A} {B} {a0} (x ∷ xs) f (∈-drop y) | a , a∈xs , a0≡a = a , ∈-drop a∈xs , a0≡a
   
 
-  lem-empty : ∀ {A : Set} → (a : A) → a ∉ []
-  lem-empty a ()
-
   {-
   bestResultColor' : ℕ → Color → Board ⊎ FinishedBoard → Maybe Result
   bestResultColor' zero c b = nothing
   bestResultColor' (suc n) c (inj₂ fin) = just (getResult fin)
   bestResultColor' (suc n) c (inj₁ brd) with inspect (validMoves brd)
   bestResultColor' (suc n) c (inj₁ brd) | [] with-≡ eq with noStuckBoard brd
-  bestResultColor' (suc n) c (inj₁ brd) | [] with-≡ eq | move , p rewrite eq = ⊥-elim (lem-empty move p)
+  bestResultColor' (suc n) c (inj₁ brd) | [] with-≡ eq | move , p rewrite eq = ⊥-elim (lem-∉-empty move p)
   bestResultColor' (suc n) c (inj₁ brd) | (x ∷ xs) with-≡ eq = {!!}
   -}
 
@@ -462,7 +459,7 @@ module GameTheorems where
 
     -- impossible case, the successor list can't be empty
     depth (node b [] y) with inspect (validMoves b) | noStuckBoard b
-    depth (node b [] y) | []       with-≡ eq | move , p rewrite eq = ⊥-elim (lem-empty move p)
+    depth (node b [] y) | []       with-≡ eq | move , p rewrite eq = ⊥-elim (lem-∉-empty move p)
     depth (node b [] y) | (m ∷ ms) with-≡ eq | move , p rewrite eq = ⊥-elim (lem-zero-neq-suc y)
 
     depthNode : ℕ → List GameTree → ℕ
@@ -482,6 +479,10 @@ module GameTheorems where
   --  Solving TicTacToe using the GameTree  --
   --------------------------------------------
 
+  getColor : Board ⊎ FinishedBoard → Color
+  getColor (inj₁ b) = currentPlayer b
+  getColor (inj₂ f) = X --doesn't matter
+
   mutual
     resultColor : Color → GameTree → Result
     resultColor c (leaf fin) = getResult fin
@@ -489,7 +490,7 @@ module GameTheorems where
   
     -- impossible case
     resultColor c (node b [] y) with inspect (validMoves b) | noStuckBoard b
-    ... | []       with-≡ eq | move , p rewrite eq = ⊥-elim (lem-empty move p)
+    ... | []       with-≡ eq | move , p rewrite eq = ⊥-elim (lem-∉-empty move p)
     ... | (m ∷ ms) with-≡ eq | move , p rewrite eq = ⊥-elim (lem-zero-neq-suc y)
     
     resultNode : Color → Result → List GameTree → Result
@@ -497,10 +498,7 @@ module GameTheorems where
     resultNode c r (x ∷ xs) = resultNode c (maxByColor c r (resultColor (otherColor c) x)) xs
 
   bestResult : Board ⊎ FinishedBoard → Result
-  bestResult b = resultColor (color b) (generateTree b) where
-    color : Board ⊎ FinishedBoard → Color
-    color (inj₁ b) = currentPlayer b
-    color (inj₂ f) = X --doesn't matter
+  bestResult b = resultColor (getColor b) (generateTree b)
 
   ------------------------------------------
   --  Optimized searching (with pruning)  --
@@ -514,19 +512,38 @@ module GameTheorems where
   
     -- impossible case
     resultColorOpt c (node b [] y) with inspect (validMoves b) | noStuckBoard b
-    ... | []       with-≡ eq | move , p rewrite eq = ⊥-elim (lem-empty move p)
+    ... | []       with-≡ eq | move , p rewrite eq = ⊥-elim (lem-∉-empty move p)
     ... | (m ∷ ms) with-≡ eq | move , p rewrite eq = ⊥-elim (lem-zero-neq-suc y)
     
     resultNodeOpt : Color → Result → List GameTree → Result
-    resultNodeOpt c r []       = r
     resultNodeOpt X (Win X) xs = Win X
     resultNodeOpt O (Win O) xs = Win O
+    resultNodeOpt c r []       = r
     resultNodeOpt c r (x ∷ xs) = resultNodeOpt c (maxByColor c r (resultColorOpt (otherColor c) x)) xs
 
   bestResultOpt : Board ⊎ FinishedBoard → Result
-  bestResultOpt b = resultColorOpt (color b) (generateTree b) where
-    color : Board ⊎ FinishedBoard → Color
-    color (inj₁ b) = currentPlayer b
-    color (inj₂ f) = X --doesn't matter  
+  bestResultOpt b = resultColorOpt (getColor b) (generateTree b)
 
+  -------------------------------------------------------------------
+  --  Relationships between various ways to analyze the Game Tree  --
+  -------------------------------------------------------------------
 
+  mutual
+    resultColorEquiv : ∀ (c : Color) (t : GameTree) → resultColor c t ≡ resultColorOpt c t
+    resultColorEquiv c (leaf y) = refl
+    resultColorEquiv c (node b [] y) with inspect (validMoves b) | noStuckBoard b
+    ... | []       with-≡ eq | move , p = ⊥-elim (lem-∉-empty move (lem-∈-eq-l move (validMoves b) [] eq p))
+    ... | (m ∷ ms) with-≡ eq | move , p = ⊥-elim (lem-zero-neq-suc (subst (_≡_ 0) (lem-length-eq eq) y))
+    
+    resultColorEquiv c (node b (x ∷ xs) y) rewrite resultColorEquiv (otherColor c) x 
+      = resultNodeEquiv c (resultColorOpt (otherColor c) x) xs
+
+    resultNodeEquiv : ∀ (c : Color) (r : Result) (l : List GameTree) → resultNode c r l ≡ resultNodeOpt c r l
+    resultNodeEquiv c r l = {!!}
+    {-
+    resultNodeEquiv X (Win X) (x ∷ xs) = {!!}
+    resultNodeEquiv c r (x ∷ xs) rewrite resultColorEquiv (otherColor c) x = {!!}  resultNodeEquiv c
+                                                                               (maxByColor c r (resultColorOpt (otherColor c) x)) xs
+    -}
+  bestResultEquiv : ∀ (bf : Board ⊎ FinishedBoard) → bestResult bf ≡ bestResultOpt bf
+  bestResultEquiv bf = resultColorEquiv (getColor bf) (generateTree bf)
