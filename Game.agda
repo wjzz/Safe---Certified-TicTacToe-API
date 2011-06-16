@@ -574,13 +574,13 @@ module GameImplementation where
 
 -- make all fields visible
 open GameInterface (GameImplementation.game)
-
+{-
 brd : Board
 brd = emptyBoard
 
 empt : Bool
 empt = isEmpty emptyBoard
-
+-}
 {-
 t : Maybe Result
 t = GameImplementation.bestResultColor 9 X (inj₁ emptyBoard)
