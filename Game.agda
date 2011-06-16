@@ -346,8 +346,7 @@ module GameImplementation where
 
   lem-win-extend : ∀ {c n} → (winner : Color)(ms : Moves c n) → (m : Move) → WonC winner ms → WonC winner (ms ▸ m)
   lem-win-extend winner ms m (wonC .ms winning winningPosition winnning∈movesByClr) 
-    = wonC (ms ▸ m) winning winningPosition (⊂-trans winning (movesByColor winner ms)
-         (movesByColor winner (ms ▸ m)) winnning∈movesByClr (lem-movesByColor-ext winner m ms))
+    = wonC (ms ▸ m) winning winningPosition (⊂-trans winnning∈movesByClr (lem-movesByColor-ext winner m ms))
 
   lem-nowin-prev : ∀ {c n} → (winner : Color)(ms : Moves c n) → (m : Move) → ¬ WonC winner (ms ▸ m) → ¬ WonC winner ms
   lem-nowin-prev winner ms m x x' = x (lem-win-extend winner ms m x')
@@ -546,6 +545,8 @@ module GameImplementation where
                                                 m vld refl | no ¬p' | no ¬p | yes p = refl
   undo-make-move2 (goodBoard n<9 ms dist noWin) f m vld () | no ¬p0 | no ¬p' | no ¬p
 
+
+  -- pack all public functions into the GameInterface record
 
   game : GameInterface
   game = record {

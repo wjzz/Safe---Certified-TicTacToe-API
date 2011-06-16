@@ -79,6 +79,15 @@ module GameTheorems where
   lem-measure' : ∀ (b : Board)(m : Move)(p : m ∈ validMoves b) → (measure (makeMove b m p)) <′ measure (inj₁ b)
   lem-measure' b m p = <⇒<′ (lem-measure b m p)
 
+  lem-measure-board : ∀ (b b' : Board)(m : Move)(p : m ∈ validMoves b) → makeMove b m p ≡ inj₁ b' → 
+     measureB b' <′ measureB b
+  lem-measure-board b b' m p make with inspect (makeMove b m p)
+  lem-measure-board b b' m p make | inj₁ x with-≡ eq with lem-measure' b m p
+  ... | lem rewrite make = lem
+  lem-measure-board b b' m p make | inj₂ fin with-≡ eq rewrite eq with make
+  ... | ()
+
+
   -- well founded stuff
   -- we don't have to start from scratch, because _<′_ is well-founded 
   -- (and that is proven in the std-lib :>)
@@ -90,29 +99,35 @@ module GameTheorems where
   wf-≪ = well-founded <-well-founded where
    open Inverse-image (measure)
 
+  _≺_ : Rel Board zero
+  b1 ≺ b2 = measureB b1 <′ measureB b2
+
+  wf-≺ : Well-founded _≺_
+  wf-≺ = well-founded <-well-founded where
+    open Inverse-image (measureB)
+
   -- well founded recursors
+  -- the bf version if for Board ⊎ FinishedBoard → Board ⊎ FinishedBoard
+  -- the b version is for  Board → Board style recursion
 
   bf-recursor : Recursor (WfRec _≪_)
   bf-recursor = wfRec where
     open Induction.WellFounded.All wf-≪
 
-  _≺_ : Rel Board zero
-  b1 ≺ b2 = measureB b1 <′ measureB b2
-
-  
-  
-
+  b-recursor : Recursor (WfRec _≺_)
+  b-recursor = wfRec where
+    open Induction.WellFounded.All wf-≺
 
   ----------------------------------------
   --  Further properties about the api  --
   ----------------------------------------
 
   -- certified valid moves
-  {-
+  
   validMovesVec : (b : Board) → ∃ (λ (k : ℕ) → k > 0 × 9 ≡ movesNo b + k × Vec Move k)
   validMovesVec (goodBoard {c} {n} n<9 ms dist noWin) with safeMinus n 8 (≤-pred n<9)
   validMovesVec (goodBoard {c} {n} n<9 ms dist noWin) | k , 8≡n+k = suc k , s≤s z≤n , (trans (cong suc 8≡n+k) (lem-plus-s n k)) , {!!}
-  -}
+  
 
   distinctAll : distinct allMoves
   distinctAll = dist-cons (dist-cons (dist-cons (dist-cons (dist-cons (dist-cons (dist-cons (dist-cons (dist-cons dist-nil (λ ()))
@@ -193,10 +208,10 @@ module GameTheorems where
     final-lem : 9 ≤ n
     final-lem = subst (λ m → 9 ≤ m) len lem
 
-  {-
+  
   validMovesLength : ∀ (b : Board) → length (validMoves b) ≡ 9 ∸ movesNo b
   validMovesLength = {!!}
-  -}
+  
 
   movesNoMakeMove : ∀ (b b' : Board)(m : Move) → (p : m ∈ validMoves b) → makeMove b m p ≡ inj₁ b' → suc (movesNo b) ≡ movesNo b'
   movesNoMakeMove (goodBoard {c} {n} n<9 ms dist noWin) b' m p b'-makeMove-b with wonDec X (ms ▸ m)
@@ -209,10 +224,10 @@ module GameTheorems where
   movesNoMakeMove (goodBoard n<9 ms dist noWin) .(goodBoard (s≤s m≤n) (ms ▸ m) 
    (dist-cons dist (validMoves-distinct m ms n<9 dist noWin p)) (¬p0 , ¬p')) m p refl | no ¬p0 | no ¬p' | no ¬p | s≤s m≤n = refl
 
-  {-
+  
   validMovesSubset : ∀ (b b' : Board)(m : Move) → (p : m ∈ validMoves b) → makeMove b m p ≡ inj₁ b' → validMoves b' ⊂ validMoves b
   validMovesSubset = {!!}
-  -}
+  
   
   ------------------------
   --  A testing helper  --
@@ -227,16 +242,56 @@ module GameTheorems where
 
 
   -- moving from start from start
-  {-
+  
   tryMovesEmptyBoard : ∀ (l : List Move) → distinct l → length l ≡ 9 → 
     ∃ (λ (fin : FinishedBoard) → tryMoves (inj₁ emptyBoard) l ≡ inj₂ fin)
   tryMovesEmptyBoard l dist len = {!!}
 
-  -- this seems like a great candidate for a well founded induction
+  lem-in-irrelv : ∀ {A : Set}{a : A}{l} → distinct l → (p1 : a ∈ l) → (p2 : a ∈ l) → p1 ≡ p2
+  lem-in-irrelv dist-nil () a∈[]
+  lem-in-irrelv (dist-cons dist y) ∈-take ∈-take = refl
+  lem-in-irrelv (dist-cons dist y) ∈-take (∈-drop y') = ⊥-elim (y y')
+  lem-in-irrelv (dist-cons dist y) (∈-drop y') ∈-take = ⊥-elim (y y')
+  lem-in-irrelv (dist-cons dist y) (∈-drop y') (∈-drop y0) = cong ∈-drop (lem-in-irrelv dist y' y0)
+
+  lem-valid-moves-distinct : ∀ (b : Board) → distinct (validMoves b)
+  lem-valid-moves-distinct b = {!!}
+
+  addedMoveNoLongerValid : ∀ (b b' : Board)(m : Move) → (p : m ∈ validMoves b) → (makeMove b m p ≡ inj₁ b') →
+    m ∉ validMoves b'
+  addedMoveNoLongerValid b b' m p make = {!!}
+
+  lem-member-refl-valid : ∀ (b : Board) (m : Move) → (p : m ∈ validMoves b) → member m (validMoves b) _==_ ≡ yes p
+  lem-member-refl-valid b m m∈v with member m (validMoves b) _==_
+  lem-member-refl-valid b m m∈v | yes p = cong yes (lem-in-irrelv (lem-valid-moves-distinct b) p m∈v)
+  lem-member-refl-valid b m m∈v | no ¬p = ⊥-elim (¬p m∈v)
+
+
+  allGamesTerminateIter : ∀ (b : Board) → ((y : Board) → y ≺ b → ∃₂ (λ (l : List Move) (fin : FinishedBoard) → distinct l ×
+          l ⊂ validMoves y × tryMoves (inj₁ y) l ≡ inj₂ fin)) → 
+       ∃₂ (λ (l : List Move) (fin : FinishedBoard) → distinct l × l ⊂ validMoves b × tryMoves (inj₁ b) l ≡ inj₂ fin)
+  allGamesTerminateIter b rec with noStuckBoard b
+  allGamesTerminateIter b rec | move , move-valid with inspect (makeMove b move move-valid) | lem-member-refl-valid b move move-valid
+  allGamesTerminateIter b rec | move , move-valid | inj₂ fin with-≡ eq | p  = 
+    move ∷ [] , fin , (dist-cons dist-nil (λ ())) , ((cons nil move-valid) , lem) where
+      lem : tryMoves (inj₁ b) (move ∷ []) ≡ inj₂ fin
+      lem rewrite p | eq = refl
+  allGamesTerminateIter b rec | move , move-valid | inj₁ b' with-≡ eq | p  with rec b' (lem-measure-board b b' move move-valid eq)
+  allGamesTerminateIter b rec | move , move-valid | inj₁ b' with-≡ eq | p | l , fin , dist , l⊂valid , tryMvs
+   = move ∷ l , fin , (dist-cons dist lem) , (cons (⊂-trans l⊂valid (validMovesSubset b b' move move-valid eq)) move-valid) , lem2 where
+     lem : move ∉ l
+     lem move∈l = addedMoveNoLongerValid b b' move move-valid eq (lem-subset-alt move l (validMoves b') l⊂valid move∈l)
+
+     lem2 : tryMoves (inj₁ b) (move ∷ l) ≡ inj₂ fin
+     lem2 rewrite p | eq = tryMvs
+
   allGamesTerminate : ∀ (b : Board) → 
-    ∃₂ (λ (l : List Move) (fin : FinishedBoard)→ distinct l → l ⊂ validMoves b → tryMoves (inj₁ b) l ≡ inj₂ fin)
-  allGamesTerminate b = {!!}
-  -}
+    ∃₂ (λ (l : List Move) (fin : FinishedBoard) → distinct l × l ⊂ validMoves b × tryMoves (inj₁ b) l ≡ inj₂ fin)
+  allGamesTerminate b = b-recursor (λ x → ∃₂ (λ (l : List Move) (fin : FinishedBoard) 
+                                    → distinct l × l ⊂ validMoves x × tryMoves (inj₁ x) l ≡ inj₂ fin))
+                                   allGamesTerminateIter b
+  
+
   --gameWillFinish : ∀ (l : List Move) → length l 
 
   -----------------------------------------
@@ -429,4 +484,4 @@ module GameTheorems where
     color (inj₁ b) = currentPlayer b
     color (inj₂ f) = X --doesn't matter  
 
-  -- pack all public functions into the GameInterface record
+
