@@ -278,19 +278,12 @@ module GameTheory where
     ∃ (λ (fin : FinishedBoard) → tryMoves (inj₁ emptyBoard) l ≡ inj₂ fin)
   tryMovesEmptyBoard l dist len = {!!}
 
-  lem-in-irrelv : ∀ {A : Set}{a : A}{l} → distinct l → (p1 : a ∈ l) → (p2 : a ∈ l) → p1 ≡ p2
-  lem-in-irrelv dist-nil () a∈[]
-  lem-in-irrelv (dist-cons dist y) ∈-take ∈-take = refl
-  lem-in-irrelv (dist-cons dist y) ∈-take (∈-drop y') = ⊥-elim (y y')
-  lem-in-irrelv (dist-cons dist y) (∈-drop y') ∈-take = ⊥-elim (y y')
-  lem-in-irrelv (dist-cons dist y) (∈-drop y') (∈-drop y0) = cong ∈-drop (lem-in-irrelv dist y' y0)
-
   lem-valid-moves-distinct : ∀ (b : Board) → distinct (validMoves b)
   lem-valid-moves-distinct (goodBoard n<9 ms dist noWin) = removeDec-distinct allMoves (λ move → member′ move ms) distinctAll
 
-
   -- this proof pattern of matching against WonDec X, WonDec O and ≟ℕ is very repeatetive
   -- can this be abstracted somehow?
+
   addedMoveNoLongerValid : ∀ (b b' : Board)(m : Move) → (p : m ∈ validMoves b) → (makeMove b m p ≡ inj₁ b') →
     m ∉ validMoves b'
   addedMoveNoLongerValid (goodBoard n<9 ms dist noWin) b' m p make with wonDec X (ms ▸ m)
@@ -304,13 +297,11 @@ module GameTheory where
            (dist-cons dist (validMoves-distinct m ms n<9 dist noWin p)) (¬p0 , ¬p')) m p refl | no ¬p0 | no ¬p' | no ¬p | lem 
      = removeDec-valid2-rev allMoves (λ move → member′ move (ms ▸ m)) m (allMovesValid m) ∈-take
 
-   -- = removeDec-valid2-rev allMoves {!(λ move → member′ move (ms ▸ m))!} m (allMovesValid m) {!!}
 
   lem-member-refl-valid : ∀ (b : Board) (m : Move) → (p : m ∈ validMoves b) → member m (validMoves b) _==_ ≡ yes p
   lem-member-refl-valid b m m∈v with member m (validMoves b) _==_
-  lem-member-refl-valid b m m∈v | yes p = cong yes (lem-in-irrelv (lem-valid-moves-distinct b) p m∈v)
+  lem-member-refl-valid b m m∈v | yes p = cong yes (lem-∈-irrelv (lem-valid-moves-distinct b) p m∈v)
   lem-member-refl-valid b m m∈v | no ¬p = ⊥-elim (¬p m∈v)
-
 
   allGamesTerminateIter : ∀ (b : Board) → ((y : Board) → y ≺ b → ∃₂ (λ (l : List Move) (fin : FinishedBoard) → distinct l ×
           l ⊂ validMoves y × tryMoves (inj₁ y) l ≡ inj₂ fin)) → 
@@ -336,12 +327,9 @@ module GameTheory where
                                     → distinct l × l ⊂ validMoves x × tryMoves (inj₁ x) l ≡ inj₂ fin))
                                    allGamesTerminateIter b
   
-
-  --gameWillFinish : ∀ (l : List Move) → length l 
-
-  -----------------------------------------
-  --  Utilities for certified searching  --
-  -----------------------------------------
+  --------------------------------------------------------------------------------------------------
+  --  Functions for comparing results from a given player's perspective and picking the best one  --
+  --------------------------------------------------------------------------------------------------
 
   maxByColor : Color → Result → Result → Result
   maxByColor X (Win X) r2 = Win X
@@ -371,33 +359,16 @@ module GameTheory where
   maxByColorAssoc O Draw Draw Draw = refl
   maxByColorAssoc O (Win X) r2 r3 = refl
 
-
   maximumByColor : Color → Maybe Result → List (Maybe Result) -> Maybe Result
   maximumByColor c r [] = r
   maximumByColor c r (just x ∷ xs) with maximumByColor c r xs
   maximumByColor c r (just x' ∷ xs) | just x = just (maxByColor c x' x)
   maximumByColor c r (just x ∷ xs)  | nothing = just x
-  maximumByColor c r (nothing ∷ xs) = maximumByColor c r xs 
+  maximumByColor c r (nothing ∷ xs) = maximumByColor c r xs   
 
-  map-in : {A B : Set} → (l : List A) → (f : (a : A) → a ∈ l → B) → List B
-  map-in [] _ = []
-  map-in {A} {B} (x ∷ xs) f = f x ∈-take ∷ map-in xs f' where
-    f' : (a : A) → a ∈ xs → B
-    f' a a∈xs = f a (∈-drop a∈xs)
-
-  lem-length-map-in :  {A B : Set} → (l : List A) → (f : (a : A) → a ∈ l → B) → length (map-in l f) ≡ length l
-  lem-length-map-in []       f = refl
-  lem-length-map-in (x ∷ xs) f = cong suc (lem-length-map-in xs (λ a x' → f a (∈-drop x')))
-
-  lem-map-in-inv : {A B : Set} → {a0 : B} → (l : List A) → (f : (a : A) → a ∈ l → B) → a0 ∈ map-in l f →
-     ∃₂ (λ (a : A) (p : a ∈ l) → a0 ≡ f a p)
-  lem-map-in-inv [] f () 
-  lem-map-in-inv (x ∷ xs) f ∈-take = x , ∈-take , refl
-  lem-map-in-inv {A} {B} {a0} (x ∷ xs) f (∈-drop y) with lem-map-in-inv xs f' y where
-    f' : (a : A) (a∈xs : a ∈ xs) → B
-    f' a a∈xs = f a (∈-drop a∈xs)
-  lem-map-in-inv {A} {B} {a0} (x ∷ xs) f (∈-drop y) | a , a∈xs , a0≡a = a , ∈-drop a∈xs , a0≡a
-  
+  ---------------------------------------------------------------------------------------------------
+  --  Functions that analyze all possible outcomes and return the optimal result for both players  --
+  ---------------------------------------------------------------------------------------------------
 
   {-
   bestResultColor' : ℕ → Color → Board ⊎ FinishedBoard → Maybe Result
@@ -410,7 +381,6 @@ module GameTheory where
   -}
 
   
-
   bestResultColor : ℕ → Color → Board ⊎ FinishedBoard → Maybe Result
   bestResultColor 0 c b = nothing
   bestResultColor (suc n) c (inj₂ fin) = just (getResult fin)
@@ -426,10 +396,10 @@ module GameTheory where
     l : List (Maybe Result)
     l = map-in xs (λ m inn → bestResultColor n (otherColor c) (makeMove brd m (lem ((x ∷ xs)) ((validMoves brd)) m (∈-drop inn) (sym eq))))
     
-  -------------------------------------------
-  --  An approach with explicit game-tree  --
-  -------------------------------------------
-
+  -------------------------------------------------------------------
+  --  Positions  reachable from a given board in exactly one move  --
+  -------------------------------------------------------------------
+  
   boardSuccessors : (b : Board) → List (Board ⊎ FinishedBoard)
   boardSuccessors b = map-in (validMoves b) (λ m m∈valid → makeMove b m m∈valid)
 
@@ -444,7 +414,9 @@ module GameTheory where
   lem-successors-in b b' b'∈suc with lem-successors-ex b b' b'∈suc
   lem-successors-in b b' b'∈suc | m , p1 , eq rewrite eq = lem-measure' b m p1
 
-  -- the GameTree itself
+  ----------------------------------------------------------------
+  --  An explicit game-tree of all possible game continuations  --
+  ----------------------------------------------------------------
 
   data GameTree : Set where
     leaf : FinishedBoard → GameTree
@@ -459,15 +431,20 @@ module GameTheory where
   generateTree : Board ⊎ FinishedBoard → GameTree
   generateTree = bf-recursor (λ x → GameTree) generateTreeIter
 
-  -- now we can do some traversals on the tree
+  ---------------------------------------
+  --  All possible games of TicTacToe  --
+  ---------------------------------------
 
-  -- all possible games of TicTacToe
   -- the leaves represent all possible final positions in the game of TicTacToe
   -- according to the Haskell & SML implementation (and also Wikipedia)
   -- there should be 255168 leaves!
 
   allGames : GameTree
   allGames = generateTree (inj₁ emptyBoard)
+
+  ---------------------------------------
+  --  Inductive functions on GameTree  --
+  ---------------------------------------
 
   mutual 
     depth : GameTree → ℕ
@@ -516,6 +493,14 @@ module GameTheory where
 
   bestResult : Board ⊎ FinishedBoard → Result
   bestResult b = resultColor (getColor b) (generateTree b)
+
+
+  -- a simple buf useful property
+
+  resultNodeWin : ∀ (c : Color)(xs : List GameTree) → resultNode c (Win c) xs ≡ Win c
+  resultNodeWin c []       = refl
+  resultNodeWin X (x ∷ xs) = resultNodeWin X xs
+  resultNodeWin O (x ∷ xs) = resultNodeWin O xs
 
   ---------------------------------------------------
   --  (not-so) Optimized searching (with pruning)  --
@@ -571,7 +556,9 @@ module GameTheory where
   --  Relationships between various ways to analyze the Game Tree  --
   -------------------------------------------------------------------
 
-  -- bestResult and bestResult2
+  ----------------------------------
+  --  bestResult and bestResult2  --
+  ----------------------------------
 
   mutual
     resultColorEquiv : ∀ (c : Color) (t : GameTree) → resultColor c t ≡ resultColor2 c t
@@ -584,20 +571,27 @@ module GameTheory where
       = resultNodeEquiv c (resultColor2 (otherColor c) x) xs
 
     resultNodeEquiv : ∀ (c : Color) (r : Result) (l : List GameTree) → resultNode c r l ≡ resultNode2 c r l
---    resultNodeEquiv X (Win X) xs = {!!}
---    resultNodeEquiv O (Win O) xs = {!!}
-    resultNodeEquiv c r [] = {!!}
-    resultNodeEquiv c r (x ∷ xs) = {!!}
-    {-
-    resultNodeEquiv X (Win X) (x ∷ xs) = {!!}
-    resultNodeEquiv c r (x ∷ xs) rewrite resultColorEquiv (otherColor c) x = {!!}  resultNodeEquiv c
-                                                                               (maxByColor c r (resultColor2 (otherColor c) x)) xs
-    -}
+    resultNodeEquiv X (Win X) xs = resultNodeWin X xs
+    resultNodeEquiv O (Win O) xs = resultNodeWin O xs
+    resultNodeEquiv O (Win X) [] = refl
+    resultNodeEquiv X (Win O) [] = refl
+    resultNodeEquiv X Draw    [] = refl
+    resultNodeEquiv O Draw    [] = refl
+
+    resultNodeEquiv O (Win X) (x ∷ xs) rewrite resultColorEquiv X x = resultNodeEquiv O (resultColor2 X x) xs
+    resultNodeEquiv X (Win O) (x ∷ xs) rewrite resultColorEquiv O x = resultNodeEquiv X (resultColor2 O x) xs 
+    resultNodeEquiv X Draw    (x ∷ xs) rewrite resultColorEquiv O x = resultNodeEquiv X (maxByColor X Draw (resultColor2 O x)) xs
+    resultNodeEquiv O Draw    (x ∷ xs) rewrite resultColorEquiv X x = resultNodeEquiv O (maxByColor O Draw (resultColor2 X x)) xs
+
+  -- main result
+
   bestResultEquiv : ∀ (bf : Board ⊎ FinishedBoard) → bestResult bf ≡ bestResult2 bf
   bestResultEquiv bf = resultColorEquiv (getColor bf) (generateTree bf)
 
 
-  -- bestResult and bestResult3 equivalence
+  -----------------------------------------
+  --  bestResult and bestResult3 equiv.  --
+  -----------------------------------------
 
   mutual
     resultColorEquiv3 : ∀ (c : Color) (t : GameTree) → resultColor c t ≡ resultColor3 c t
@@ -614,6 +608,8 @@ module GameTheory where
     resultNodeEquiv3 c r (x ∷ xs) rewrite sym (resultColorEquiv3 (otherColor c) x) | resultNodeEquiv3 c (maxByColor c r (resultColor (otherColor c) x)) xs 
        = resultNode3-step r (resultColor (otherColor c) x) xs
 
+  -- main result
+
   bestResultEquiv3 : ∀ (bf : Board ⊎ FinishedBoard) → bestResult bf ≡ bestResult3 bf
   bestResultEquiv3 bf = resultColorEquiv3 (getColor bf) (generateTree bf)
 
@@ -621,41 +617,31 @@ module GameTheory where
 --  Example queries and calls  --
 ---------------------------------
 
-{-
-t : Maybe Result
-t = GameImplementation.bestResultColor 9 X (inj₁ emptyBoard)
-
-t2 : Maybe Result
-t2 = GameImplementation.bestResultColor 5 X (inj₁ emptyBoard)
-
-{-
-this type checks after around 30 minutes
-
-lemma : t2 ≡ just (Win 
-lemma = refl
-
--}
-
-b : Board ⊎ FinishedBoard 
-b = GameImplementation.tryMoves (inj₁ emptyBoard) (P11 {- ∷ P12 ∷ P13 ∷ P21  ∷ P22 ∷ P23 ∷ P31 -} ∷ [])
-
-b2 : Bool
-b2 with b
-... | inj₁ _ = true
-... | inj₂ _ = false
-
-leaves : ℕ
-leaves = GameImplementation.leavesNo --(GameImplementation.generateTree (inj₁ emptyBoard)) -- 
-         (GameImplementation.generateTree b)
--}
-
 open GameInterface (GameImplementation.game)
 
 empt : Bool
 empt = isEmpty emptyBoard
 
-r : Result
-r = GameTheory.bestResult3 (inj₁ emptyBoard) ---} (GameTheory.tryMoves (inj₁ emptyBoard) (P11 ∷ P12 ∷ []))
+-- 65 minutes to evaluate
 
---n : Maybe ℕ
---n = GameImplementation.depthM (GameImplementation.generateTree b)
+r : Result
+r = GameTheory.bestResult3 (inj₁ emptyBoard) 
+
+
+
+{-
+-- (GameTheory.tryMoves (inj₁ emptyBoard) (P11 ∷ P12 ∷ []))
+
+t : Maybe Result
+t = GameImplementation.bestResultColor 9 X (inj₁ emptyBoard)
+
+b : Board ⊎ FinishedBoard 
+b = GameImplementation.tryMoves (inj₁ emptyBoard) (P11 {- ∷ P12 ∷ P13 ∷ P21  ∷ P22 ∷ P23 ∷ P31 -} ∷ [])
+
+leaves : ℕ
+leaves = GameImplementation.leavesNo --(GameImplementation.generateTree (inj₁ emptyBoard)) -- 
+         (GameImplementation.generateTree b)
+
+n : Maybe ℕ
+n = GameImplementation.depthM (GameImplementation.generateTree b)
+-}
