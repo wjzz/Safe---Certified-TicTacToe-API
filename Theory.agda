@@ -226,9 +226,36 @@ module GameTheorems where
 
   
   validMovesSubset : ∀ (b b' : Board)(m : Move) → (p : m ∈ validMoves b) → makeMove b m p ≡ inj₁ b' → validMoves b' ⊂ validMoves b
-  validMovesSubset = {!!}
+  validMovesSubset (goodBoard n<9 ms dist noWin) b' m p make with wonDec X (ms ▸ m)
+  validMovesSubset (goodBoard n<9 ms dist noWin) b' m p () | yes p'
+  validMovesSubset (goodBoard n<9 ms dist noWin) b' m p make | no ¬p with wonDec O (ms ▸ m)
+  validMovesSubset (goodBoard n<9 ms dist noWin) b' m p ()| no ¬p | yes p'
+  validMovesSubset (goodBoard {c} {n} n<9 ms dist noWin) b' m p make | no ¬p | no ¬p' with suc n ≟ℕ 9
+  validMovesSubset (goodBoard {c} {n} n<9 ms dist noWin) b' m p () | no ¬p | no ¬p' | yes p'
+  validMovesSubset (goodBoard {c} {n} n<9 ms dist noWin) b' m p make | no ¬p0 | no ¬p' | no ¬p with lem-≤-cases-ext (suc n) 9 n<9 ¬p
+  validMovesSubset (goodBoard n<9 ms dist noWin) .(goodBoard (s≤s m≤n) (ms ▸ m) 
+   (dist-cons dist (validMoves-distinct m ms n<9 dist noWin p)) (¬p0 , ¬p')) m p refl | no ¬p0 | no ¬p' | no ¬p | s≤s m≤n 
+      = {!!}
+-- lemma:  
+{-
+Goal: (removeDec
+       (P11 ∷ P12 ∷ P13 ∷ P21 ∷ P22 ∷ P23 ∷ P31 ∷ P32 ∷ P33 ∷ [])
+       (λ move → member′ move (ms ▸ m) | move == m)
+       | (member′ P11 (ms ▸ m) | P11 == m))
+      ⊂
+      (removeDec
+       (P11 ∷ P12 ∷ P13 ∷ P21 ∷ P22 ∷ P23 ∷ P31 ∷ P32 ∷ P33 ∷ [])
+       (λ move → member′ move ms)
+       | member′ P11 ms)
+-}
+
   
   
+
+  
+  
+  -- lemma: it's not possible to find a board and a move after which Won X and Won O are true
+
   ------------------------
   --  A testing helper  --
   ------------------------
@@ -243,6 +270,9 @@ module GameTheorems where
 
   -- moving from start from start
   
+  -- this seems to be provable most easily by generalizing 9
+  -- to measureB b and proceeding by well-founded recursion
+
   tryMovesEmptyBoard : ∀ (l : List Move) → distinct l → length l ≡ 9 → 
     ∃ (λ (fin : FinishedBoard) → tryMoves (inj₁ emptyBoard) l ≡ inj₂ fin)
   tryMovesEmptyBoard l dist len = {!!}
@@ -255,11 +285,25 @@ module GameTheorems where
   lem-in-irrelv (dist-cons dist y) (∈-drop y') (∈-drop y0) = cong ∈-drop (lem-in-irrelv dist y' y0)
 
   lem-valid-moves-distinct : ∀ (b : Board) → distinct (validMoves b)
-  lem-valid-moves-distinct b = {!!}
+  lem-valid-moves-distinct (goodBoard n<9 ms dist noWin) = removeDec-distinct allMoves (λ move → member′ move ms) distinctAll
 
+
+  -- this proof pattern of matching against WonDec X, WonDec O and ≟ℕ is very repeatetive
+  -- can this be abstracted somehow?
   addedMoveNoLongerValid : ∀ (b b' : Board)(m : Move) → (p : m ∈ validMoves b) → (makeMove b m p ≡ inj₁ b') →
     m ∉ validMoves b'
-  addedMoveNoLongerValid b b' m p make = {!!}
+  addedMoveNoLongerValid (goodBoard n<9 ms dist noWin) b' m p make with wonDec X (ms ▸ m)
+  addedMoveNoLongerValid (goodBoard n<9 ms dist noWin) b' m p' () | yes p
+  addedMoveNoLongerValid (goodBoard n<9 ms dist noWin) b' m p make | no ¬p with wonDec O (ms ▸ m)
+  addedMoveNoLongerValid (goodBoard n<9 ms dist noWin) b' m p' () | no ¬p | yes p
+  addedMoveNoLongerValid (goodBoard {c} {n} n<9 ms dist noWin) b' m p make | no ¬p' | no ¬p with suc n ≟ℕ 9
+  addedMoveNoLongerValid (goodBoard n<9 ms dist noWin) b' m p' () | no ¬p' | no ¬p | yes p
+  addedMoveNoLongerValid (goodBoard {c} {n} n<9 ms dist noWin) b' m p make | no ¬p0 | no ¬p' | no ¬p with lem-≤-cases-ext (suc n) 9 n<9 ¬p
+  addedMoveNoLongerValid (goodBoard n<9 ms dist noWin) .(goodBoard lem (ms ▸ m) 
+           (dist-cons dist (validMoves-distinct m ms n<9 dist noWin p)) (¬p0 , ¬p')) m p refl | no ¬p0 | no ¬p' | no ¬p | lem 
+     = removeDec-valid2-rev allMoves (λ move → member′ move (ms ▸ m)) m (allMovesValid m) ∈-take
+
+   -- = removeDec-valid2-rev allMoves {!(λ move → member′ move (ms ▸ m))!} m (allMovesValid m) {!!}
 
   lem-member-refl-valid : ∀ (b : Board) (m : Move) → (p : m ∈ validMoves b) → member m (validMoves b) _==_ ≡ yes p
   lem-member-refl-valid b m m∈v with member m (validMoves b) _==_
