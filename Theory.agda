@@ -30,6 +30,8 @@ open import Induction
 open import Induction.Nat
 open import Induction.WellFounded
 
+open ≡-Reasoning
+
 open import Game
 
 {- BASE IMPORT Game -}
@@ -208,9 +210,20 @@ module GameTheorems where
     final-lem : 9 ≤ n
     final-lem = subst (λ m → 9 ≤ m) len lem
 
-  
+{-
+  validMovesLengthIter : ∀ (b : Board) → (rec : (b' : Board) → (b' ≺ b) → length (validMoves b') ≡ 9 ∸ movesNo b') → length (validMoves b) ≡ 9 ∸ movesNo b
+  validMovesLengthIter (goodBoard n<9 ms dist noWin) rec = {!!}
+--  validMovesLength = b-recursor (λ b → length (validMoves b) ≡ 9 ∸ movesNo b) validMovesLengthIter
+  -}
+
   validMovesLength : ∀ (b : Board) → length (validMoves b) ≡ 9 ∸ movesNo b
-  validMovesLength = {!!}
+  validMovesLength (goodBoard n<9 ms dist noWin) with lem where
+    lem : movesNo (goodBoard n<9 ms dist noWin) ≡ length (filterDec allMoves (λ move → member′ move ms))
+    lem = {!!}
+  validMovesLength (goodBoard n<9 ms dist noWin) | cond = trans (removeDec-length allMoves ((λ move → member′ move ms))) 
+                                                          (sym (cong (_∸_ 9) cond))
+
+
   
 
   movesNoMakeMove : ∀ (b b' : Board)(m : Move) → (p : m ∈ validMoves b) → makeMove b m p ≡ inj₁ b' → suc (movesNo b) ≡ movesNo b'
@@ -235,26 +248,14 @@ module GameTheorems where
   validMovesSubset (goodBoard {c} {n} n<9 ms dist noWin) b' m p make | no ¬p0 | no ¬p' | no ¬p with lem-≤-cases-ext (suc n) 9 n<9 ¬p
   validMovesSubset (goodBoard n<9 ms dist noWin) .(goodBoard (s≤s m≤n) (ms ▸ m) 
    (dist-cons dist (validMoves-distinct m ms n<9 dist noWin p)) (¬p0 , ¬p')) m p refl | no ¬p0 | no ¬p' | no ¬p | s≤s m≤n 
-      = {!!}
--- lemma:  
-{-
-Goal: (removeDec
-       (P11 ∷ P12 ∷ P13 ∷ P21 ∷ P22 ∷ P23 ∷ P31 ∷ P32 ∷ P33 ∷ [])
-       (λ move → member′ move (ms ▸ m) | move == m)
-       | (member′ P11 (ms ▸ m) | P11 == m))
-      ⊂
-      (removeDec
-       (P11 ∷ P12 ∷ P13 ∷ P21 ∷ P22 ∷ P23 ∷ P31 ∷ P32 ∷ P33 ∷ [])
-       (λ move → member′ move ms)
-       | member′ P11 ms)
--}
-
-  
-  
-
-  
+      = removeDec-pred-subset allMoves (λ move → member′ move (ms ▸ m)) (λ move → member′ move ms) (λ a → ∈-drop) 
   
   -- lemma: it's not possible to find a board and a move after which Won X and Won O are true
+
+  onlyOneWinner : ∀ {c n} (ms : Moves c n) (m : Move) → noWinner ms → WonC X (ms ▸ m) → WonC O (ms ▸ m) → ⊥
+  onlyOneWinner {X} ms m (noWinX , noWinO) wonX (wonC .(ms ▸ m) winning y' y0) = noWinO (wonC ms winning y' y0)
+  onlyOneWinner {O} ms m (noWinX , noWinO) (wonC .(ms ▸ m) winning y' y0) wonO = noWinX (wonC ms winning y' y0)
+
 
   ------------------------
   --  A testing helper  --
