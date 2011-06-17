@@ -36,7 +36,6 @@ open import Game
 
 {- BASE IMPORT Game -}
 
-
 module GameTheory where
 
   open GameImplementation
@@ -124,13 +123,6 @@ module GameTheory where
   --  Further properties about the api  --
   ----------------------------------------
 
-  -- certified valid moves
-  
-  validMovesVec : (b : Board) → ∃ (λ (k : ℕ) → k > 0 × 9 ≡ movesNo b + k × Vec Move k)
-  validMovesVec (goodBoard {c} {n} n<9 ms dist noWin) with safeMinus n 8 (≤-pred n<9)
-  validMovesVec (goodBoard {c} {n} n<9 ms dist noWin) | k , 8≡n+k = suc k , s≤s z≤n , (trans (cong suc 8≡n+k) (lem-plus-s n k)) , {!!}
-  
-
   distinctAll : distinct allMoves
   distinctAll = dist-cons (dist-cons (dist-cons (dist-cons (dist-cons (dist-cons (dist-cons (dist-cons (dist-cons dist-nil (λ ()))
        lem1) lem2) lem3) lem4) lem5) lem6) lem7) lem8 where
@@ -210,19 +202,22 @@ module GameTheory where
     final-lem : 9 ≤ n
     final-lem = subst (λ m → 9 ≤ m) len lem
 
-{-
-  validMovesLengthIter : ∀ (b : Board) → (rec : (b' : Board) → (b' ≺ b) → length (validMoves b') ≡ 9 ∸ movesNo b') → length (validMoves b) ≡ 9 ∸ movesNo b
-  validMovesLengthIter (goodBoard n<9 ms dist noWin) rec = {!!}
---  validMovesLength = b-recursor (λ b → length (validMoves b) ≡ 9 ∸ movesNo b) validMovesLengthIter
-  -}
+
+  lem-filterDec-add : ∀ {c n} (ms : Moves c n) (m : Move) →  {- distinctm ms → -}
+     length (filterDec allMoves (λ move → member′ move (ms ▸ m))) ≡ suc (length (filterDec allMoves (λ move → member′ move ms)))
+  lem-filterDec-add [] m = {!!}
+  lem-filterDec-add (ms ▸ m) m' = {!!}
+
+  lem-filterDec-moves : ∀ {c n} (ms : Moves c n) → length (filterDec allMoves (λ move → member′ move ms)) ≡ length (movesToList ms)
+  lem-filterDec-moves [] = refl
+  lem-filterDec-moves (ms ▸ m) rewrite lem-filterDec-add ms m | lem-filterDec-moves ms = refl
 
   validMovesLength : ∀ (b : Board) → length (validMoves b) ≡ 9 ∸ movesNo b
-  validMovesLength (goodBoard n<9 ms dist noWin) with lem where
-    lem : movesNo (goodBoard n<9 ms dist noWin) ≡ length (filterDec allMoves (λ move → member′ move ms))
-    lem = {!!}
+  validMovesLength (goodBoard {c} {n} n<9 ms dist noWin) with lem where
+    lem : movesNo (goodBoard {c} {n} n<9 ms dist noWin) ≡ length (filterDec allMoves (λ move → member′ move ms))
+    lem = sym (trans (lem-filterDec-moves ms) (movesToList-length ms))
   validMovesLength (goodBoard n<9 ms dist noWin) | cond = trans (removeDec-length allMoves ((λ move → member′ move ms))) 
                                                           (sym (cong (_∸_ 9) cond))
-
 
   
 
@@ -269,7 +264,7 @@ module GameTheory where
   ...                        | yes p = tryMoves (makeMove b m p) ms
 
 
-  -- moving from start from start
+  -- moving from start
   
   -- this seems to be provable most easily by generalizing 9
   -- to measureB b and proceeding by well-founded recursion
@@ -359,12 +354,31 @@ module GameTheory where
   maxByColorAssoc O Draw Draw Draw = refl
   maxByColorAssoc O (Win X) r2 r3 = refl
 
+  -- a preorder on results, indexed by colors
+  -- an approach with a data declaration could prove more convenient
+{-
+  _⊑[_]_ : Result → Color → Result → Set
+  r1 ⊑[ c ] r2 = maxByColor c r1 r2 ≡ r2
+-}
+  _⊑_[_] : Result → Result → Color → Set
+  r1 ⊑ r2 [ c ] = maxByColor c r1 r2 ≡ r2
+  
   maximumByColor : Color → Maybe Result → List (Maybe Result) -> Maybe Result
   maximumByColor c r [] = r
   maximumByColor c r (just x ∷ xs) with maximumByColor c r xs
   maximumByColor c r (just x' ∷ xs) | just x = just (maxByColor c x' x)
   maximumByColor c r (just x ∷ xs)  | nothing = just x
   maximumByColor c r (nothing ∷ xs) = maximumByColor c r xs   
+
+  -----------------------------------------------------------
+  --  Formalization on the notion of best possible result  --
+  -----------------------------------------------------------
+
+  data BestResult : Board → Result → Set where
+    best : (b : Board) (result : Result) →               {- Permutation l (validMoves b) ? -}
+      (∀ (l : List Move)(fin : FinishedBoard) → 
+         distinct l → l ⊂ validMoves b → (tryMoves (inj₁ b) l ≡ inj₂ fin) → getResult fin ⊑ result [ currentPlayer b ]) 
+     → BestResult b result
 
   ---------------------------------------------------------------------------------------------------
   --  Functions that analyze all possible outcomes and return the optimal result for both players  --
@@ -612,6 +626,26 @@ module GameTheory where
 
   bestResultEquiv3 : ∀ (bf : Board ⊎ FinishedBoard) → bestResult bf ≡ bestResult3 bf
   bestResultEquiv3 bf = resultColorEquiv3 (getColor bf) (generateTree bf)
+
+  ----------------------------------------
+  --  Soundness of the implementations  --
+  ----------------------------------------
+
+  BestResultMoveList : ∀ (b : Board)(r : Result) → BestResult b r → ∃₂ (λ (l : List Move)(fin : FinishedBoard) → 
+     distinct l × l ⊂ validMoves b × tryMoves (inj₁ b) l ≡ inj₂ fin × getResult fin ≡ r)
+  BestResultMoveList b r best-r = {!!}
+
+  uniquenessOfBestResult : ∀ (b : Board) (r1 r2 : Result) → BestResult b r1 → BestResult b r2 → 
+       r1 ⊑ r2 [ currentPlayer b ]   ×   r2 ⊑ r1 [ currentPlayer b ]
+  uniquenessOfBestResult b r1 r2 best1 best2 with BestResultMoveList b r1 best1 | BestResultMoveList b r2 best2
+  uniquenessOfBestResult b r1 r2 (best .b .r1 y) (best .b .r2 y') | l1 , fin1 , dist1 , l1-val , try1 , res1 | l2 , fin2 , dist2 , l2-val , try2 , res2 
+      with y' l1 fin1 dist1 l1-val try1 | y l2 fin2 dist2 l2-val try2
+  uniquenessOfBestResult b r1 r2 (best .b .r1 y) (best .b .r2 y') | l1 , fin1 , dist1 , l1-val , try1 , res1 | l2 , fin2 , dist2 , l2-val , try2 , res2 
+      | p1 | p2 rewrite res1 | res2 = p1 , p2
+
+  soundResult : ∀ (b : Board) → BestResult b (bestResult (inj₁ b))
+  soundResult b = {!!}
+
 
 ---------------------------------
 --  Example queries and calls  --
