@@ -322,6 +322,20 @@ module GameTheory where
                                     → distinct l × l ⊂ validMoves x × tryMoves (inj₁ x) l ≡ inj₂ fin))
                                    allGamesTerminateIter b
   
+  ------------------------------------------------------
+  --  Induction rules to make automation work better  --
+  ------------------------------------------------------
+
+  color-ind : {t : Color → Set} → t X → t O → (∀ (c : Color) → t c)
+  color-ind tX tO X = tX
+  color-ind tX tO O = tO
+
+  result-ind : {t : Result → Set} → t (Win X) → t Draw → t (Win O) → (∀ (r : Result) → t r)
+  result-ind tWX tD tWO (Win X) = tWX
+  result-ind tWX tD tWO (Win O) = tWO
+  result-ind tWX tD tWO Draw    = tD
+
+
   --------------------------------------------------------------------------------------------------
   --  Functions for comparing results from a given player's perspective and picking the best one  --
   --------------------------------------------------------------------------------------------------
@@ -339,6 +353,13 @@ module GameTheory where
   maxByColor O Draw Draw = Draw
 
   maxByColorAssoc : ∀ (c : Color) (r1 r2 r3 : Result) → maxByColor c (maxByColor c r1 r2) r3 ≡ maxByColor c r1 (maxByColor c r2 r3)
+  maxByColorAssoc = color-ind (result-ind (result-ind (result-ind refl refl refl)(result-ind refl refl refl)(result-ind refl refl refl))
+                                          (result-ind (result-ind refl refl refl)(result-ind refl refl refl)(result-ind refl refl refl))
+                                          (result-ind (result-ind refl refl refl)(result-ind refl refl refl)(result-ind refl refl refl)))
+                              (result-ind (result-ind (result-ind refl refl refl)(result-ind refl refl refl)(result-ind refl refl refl))
+                                          (result-ind (result-ind refl refl refl)(result-ind refl refl refl)(result-ind refl refl refl))
+                                          (result-ind (result-ind refl refl refl)(result-ind refl refl refl)(result-ind refl refl refl)))
+{-
   maxByColorAssoc X (Win X) r2 r3 = refl
   maxByColorAssoc X Draw (Win X) r3 = refl
   maxByColorAssoc X Draw (Win O) r3 = refl
@@ -353,22 +374,72 @@ module GameTheory where
   maxByColorAssoc O Draw Draw (Win X) = refl
   maxByColorAssoc O Draw Draw Draw = refl
   maxByColorAssoc O (Win X) r2 r3 = refl
-
-  -- a preorder on results, indexed by colors
-  -- an approach with a data declaration could prove more convenient
-{-
-  _⊑[_]_ : Result → Color → Result → Set
-  r1 ⊑[ c ] r2 = maxByColor c r1 r2 ≡ r2
 -}
+  maxByColor-refl : ∀ (c : Color) (r : Result) → maxByColor c r r ≡ r
+  maxByColor-refl = color-ind (result-ind refl refl refl) 
+                              (result-ind refl refl refl)
+{-
+  maxByColor-refl X (Win X) = refl
+  maxByColor-refl X (Win O) = refl
+  maxByColor-refl X Draw    = refl
+  maxByColor-refl O (Win X) = refl
+  maxByColor-refl O (Win O) = refl
+  maxByColor-refl O Draw    = refl
+-}
+
+  maxByColor-antisym : ∀ (c : Color) (r1 r2 : Result) → maxByColor c r1 r2 ≡ r2 → maxByColor c r2 r1 ≡ r1 → r1 ≡ r2
+  maxByColor-antisym X (Win X) r2 r12 r21 = r12
+  maxByColor-antisym X (Win O) (Win X) r12 r21 = sym r21
+  maxByColor-antisym X (Win O) (Win O) r12 r21 = refl
+  maxByColor-antisym X (Win O) Draw r12 r21 = sym r21
+  maxByColor-antisym X Draw (Win X) r12 r21 = sym r21
+  maxByColor-antisym X Draw (Win O) r12 r21 = r12
+  maxByColor-antisym X Draw Draw r12 r21 = refl
+  maxByColor-antisym O (Win O) r2 r12 r21 = r12
+  maxByColor-antisym O (Win X) (Win O) r12 r21 = sym r21
+  maxByColor-antisym O (Win X) (Win X) r12 r21 = refl
+  maxByColor-antisym O (Win X) Draw r12 r21 = sym r21
+  maxByColor-antisym O Draw (Win O) r12 r21 = sym r21
+  maxByColor-antisym O Draw (Win X) r12 r21 = r12
+  maxByColor-antisym O Draw Draw r12 r21 = refl
+
+  maxByColor-trans : ∀ (c : Color) (r1 r2 r3 : Result) → maxByColor c r1 r2 ≡ r2 → maxByColor c r2 r3 ≡ r3 → maxByColor c r1 r3 ≡ r3
+  maxByColor-trans X (Win X) (Win X) r3 r122 r233 = r233
+  maxByColor-trans X (Win X) (Win O) r3 () r233
+  maxByColor-trans X (Win X) Draw r3 () r233
+  maxByColor-trans X (Win O) r2 r3 r122 r233 = refl
+  maxByColor-trans X Draw r2 (Win X) r122 r233 = refl
+  maxByColor-trans X Draw (Win X) (Win O) r122 ()
+  maxByColor-trans X Draw (Win O) (Win O) () r233
+  maxByColor-trans X Draw Draw (Win O) r122 ()
+  maxByColor-trans X Draw r2 Draw r122 r233 = refl
+  maxByColor-trans O (Win O) (Win O) r3 r122 r233 = r233
+  maxByColor-trans O (Win O) (Win X) r3 () r233
+  maxByColor-trans O (Win O) Draw r3 () r233
+  maxByColor-trans O (Win X) r2 r3 r122 r233 = refl
+  maxByColor-trans O Draw r2 (Win O) r122 r233 = refl
+  maxByColor-trans O Draw (Win O) (Win X) r122 ()
+  maxByColor-trans O Draw (Win X) (Win X) () r233
+  maxByColor-trans O Draw Draw (Win X) r122 ()
+  maxByColor-trans O Draw r2 Draw r122 r233 = refl
+
+
+  --------------------------
+  --  A poset on results  --
+  -------------------------
+
   _⊑_[_] : Result → Result → Color → Set
   r1 ⊑ r2 [ c ] = maxByColor c r1 r2 ≡ r2
   
-  maximumByColor : Color → Maybe Result → List (Maybe Result) -> Maybe Result
-  maximumByColor c r [] = r
-  maximumByColor c r (just x ∷ xs) with maximumByColor c r xs
-  maximumByColor c r (just x' ∷ xs) | just x = just (maxByColor c x' x)
-  maximumByColor c r (just x ∷ xs)  | nothing = just x
-  maximumByColor c r (nothing ∷ xs) = maximumByColor c r xs   
+  ⊑-refl : ∀ (c : Color) (r : Result) → r ⊑ r [ c ]
+  ⊑-refl = maxByColor-refl
+
+  ⊑-antisym : ∀ (c : Color) (r1 r2 : Result) → r1 ⊑ r2 [ c ] → r2 ⊑ r1 [ c ] → r1 ≡ r2
+  ⊑-antisym = maxByColor-antisym
+
+  ⊑-trans : ∀ (c : Color) (r1 r2 r3 : Result) → r1 ⊑ r2 [ c ] → r2 ⊑ r3 [ c ] → r1 ⊑ r3 [ c ]
+  ⊑-trans = maxByColor-trans
+  
 
   -----------------------------------------------------------
   --  Formalization on the notion of best possible result  --
@@ -394,6 +465,12 @@ module GameTheory where
   bestResultColor' (suc n) c (inj₁ brd) | (x ∷ xs) with-≡ eq = {!!}
   -}
 
+  maximumByColor : Color → Maybe Result → List (Maybe Result) -> Maybe Result
+  maximumByColor c r [] = r
+  maximumByColor c r (just x ∷ xs) with maximumByColor c r xs
+  maximumByColor c r (just x' ∷ xs) | just x = just (maxByColor c x' x)
+  maximumByColor c r (just x ∷ xs)  | nothing = just x
+  maximumByColor c r (nothing ∷ xs) = maximumByColor c r xs   
   
   bestResultColor : ℕ → Color → Board ⊎ FinishedBoard → Maybe Result
   bestResultColor 0 c b = nothing
@@ -635,13 +712,19 @@ module GameTheory where
      distinct l × l ⊂ validMoves b × tryMoves (inj₁ b) l ≡ inj₂ fin × getResult fin ≡ r)
   BestResultMoveList b r best-r = {!!}
 
-  uniquenessOfBestResult : ∀ (b : Board) (r1 r2 : Result) → BestResult b r1 → BestResult b r2 → 
+
+  uniquenessOfBestResult' : ∀ (b : Board) (r1 r2 : Result) → BestResult b r1 → BestResult b r2 → 
        r1 ⊑ r2 [ currentPlayer b ]   ×   r2 ⊑ r1 [ currentPlayer b ]
-  uniquenessOfBestResult b r1 r2 best1 best2 with BestResultMoveList b r1 best1 | BestResultMoveList b r2 best2
-  uniquenessOfBestResult b r1 r2 (best .b .r1 y) (best .b .r2 y') | l1 , fin1 , dist1 , l1-val , try1 , res1 | l2 , fin2 , dist2 , l2-val , try2 , res2 
+  uniquenessOfBestResult' b r1 r2 best1 best2 with BestResultMoveList b r1 best1 | BestResultMoveList b r2 best2
+  uniquenessOfBestResult' b r1 r2 (best .b .r1 y) (best .b .r2 y') | l1 , fin1 , dist1 , l1-val , try1 , res1 | l2 , fin2 , dist2 , l2-val , try2 , res2 
       with y' l1 fin1 dist1 l1-val try1 | y l2 fin2 dist2 l2-val try2
-  uniquenessOfBestResult b r1 r2 (best .b .r1 y) (best .b .r2 y') | l1 , fin1 , dist1 , l1-val , try1 , res1 | l2 , fin2 , dist2 , l2-val , try2 , res2 
+  uniquenessOfBestResult' b r1 r2 (best .b .r1 y) (best .b .r2 y') | l1 , fin1 , dist1 , l1-val , try1 , res1 | l2 , fin2 , dist2 , l2-val , try2 , res2 
       | p1 | p2 rewrite res1 | res2 = p1 , p2
+
+  uniquenessOfBestResult : ∀ (b : Board) (r1 r2 : Result) → BestResult b r1 → BestResult b r2 → r1 ≡ r2
+  uniquenessOfBestResult b r1 r2 best1 best2 = ⊑-antisym (currentPlayer b) r1 r2 (proj₁ (uniquenessOfBestResult' b r1 r2 best1 best2))
+                                                                                 (proj₂ (uniquenessOfBestResult' b r1 r2 best1 best2))
+ 
 
   soundResult : ∀ (b : Board) → BestResult b (bestResult (inj₁ b))
   soundResult b = {!!}
