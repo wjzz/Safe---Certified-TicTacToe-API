@@ -49,6 +49,8 @@ maxByColorAssoc = color-ind (result-ind (result-ind (result-ind refl refl refl)(
                             (result-ind (result-ind (result-ind refl refl refl)(result-ind refl refl refl)(result-ind refl refl refl))
                                         (result-ind (result-ind refl refl refl)(result-ind refl refl refl)(result-ind refl refl refl))
                                         (result-ind (result-ind refl refl refl)(result-ind refl refl refl)(result-ind refl refl refl)))
+
+{- BASE result maxByColorAssoc -} 
                                                                                                                                 {-
 maxByColorAssoc X (Win X) r2 r3 = refl
 maxByColorAssoc X Draw (Win X) r3 = refl
@@ -68,6 +70,9 @@ maxByColorAssoc O (Win X) r2 r3 = refl
 maxByColor-refl : ∀ (c : Color) (r : Result) → maxByColor c r r ≡ r
 maxByColor-refl = color-ind (result-ind refl refl refl) 
                             (result-ind refl refl refl)
+
+{- BASE result maxByColor-refl -} 
+
                                                   {-
 maxByColor-refl X (Win X) = refl
 maxByColor-refl X (Win O) = refl
@@ -112,6 +117,8 @@ maxByColor-trans O Draw (Win O) (Win X) r122 ()
 maxByColor-trans O Draw (Win X) (Win X) () r233
 maxByColor-trans O Draw Draw (Win X) r122 ()
 maxByColor-trans O Draw r2 Draw r122 r233 = refl
+
+{- BASE result maxByColor-antisym maxByColor-trans -} 
                            
 maxByColor-inv : ∀ (c : Color)(r1 r2 : Result) → maxByColor c r1 r2 ≡ r1 ⊎ maxByColor c r1 r2 ≡ r2                 
 maxByColor-inv = color-ind (result-ind (result-ind (inj₁ refl) (inj₁ refl) (inj₁ refl)) 
@@ -123,25 +130,35 @@ maxByColor-comm : ∀ (c : Color)(r1 r2 : Result) → maxByColor c r1 r2 ≡ max
 maxByColor-comm = color-ind (result-ind (result-ind refl refl refl) (result-ind refl refl refl) (result-ind refl refl refl))
                             (result-ind (result-ind refl refl refl) (result-ind refl refl refl) (result-ind refl refl refl))
 
+{- BASE result maxByColor-comm -}
+
 --------------------------
 --  A poset on results  --
 -------------------------
+
+data _⊑_[_] : Result → Result → Color → Set where
+  mbc : {c : Color}{r1 r2 : Result} → maxByColor c r1 r2 ≡ r2 → r1 ⊑ r2 [ c ]
   
+{-
 _⊑_[_] : Result → Result → Color → Set
 r1 ⊑ r2 [ c ] = maxByColor c r1 r2 ≡ r2
+-}
 
 ⊑-refl : ∀ {c : Color} {r : Result} → r ⊑ r [ c ]
-⊑-refl {c} {r} = maxByColor-refl c r
+⊑-refl {c} {r} = mbc (maxByColor-refl c r)
                                    
 ⊑-antisym : ∀ {c : Color} {r1 r2 : Result} → r1 ⊑ r2 [ c ] → r2 ⊑ r1 [ c ] → r1 ≡ r2
-⊑-antisym {c} {r1} {r2} = maxByColor-antisym c r1 r2
+⊑-antisym {c} {r1} {r2} (mbc p1) (mbc p2) = maxByColor-antisym c r1 r2 p1 p2
                                                   
 ⊑-trans : ∀ {c : Color} {r1 r2 r3 : Result} → r1 ⊑ r2 [ c ] → r2 ⊑ r3 [ c ] → r1 ⊑ r3 [ c ]
-⊑-trans {c} {r1} {r2} {r3} = maxByColor-trans c r1 r2 r3
+⊑-trans {c} {r1} {r2} {r3} (mbc p1) (mbc p2) = mbc (maxByColor-trans c r1 r2 r3 p1 p2)
                                                       
 ⊑-max-l : ∀ {c : Color} {r1 r2 : Result} → r1 ⊑ (maxByColor c r1 r2) [ c ]
-⊑-max-l {c} {r1} {r2} rewrite sym (maxByColorAssoc c r1 r1 r2) | maxByColor-refl c r1 = refl
+⊑-max-l {c} {r1} {r2} = mbc lem where
+  lem : maxByColor c r1 (maxByColor c r1 r2) ≡ maxByColor c r1 r2
+  lem rewrite sym (maxByColorAssoc c r1 r1 r2) | maxByColor-refl c r1 = refl
 
 ⊑-max-r : ∀ {c : Color} {r1 r2 : Result} → r2 ⊑ (maxByColor c r1 r2) [ c ]
 ⊑-max-r {c} {r1} {r2} rewrite maxByColor-comm c r1 r2 = ⊑-max-l {c} {r2} {r1}
                                                                                               
+{- BASE result ⊑-refl ⊑-antisym ⊑-trans ⊑-max-l ⊑-max-r -}
