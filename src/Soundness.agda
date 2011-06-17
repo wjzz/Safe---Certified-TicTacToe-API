@@ -23,25 +23,47 @@ open import Search
 
 open GameImplementation
 --open GameTheory
-     
+
+----------------------------------
+--  Properties of generateTree  --
+----------------------------------
+
+-- to prove this theorems we will need to use the wf-induction and generalize to generateTreeIter
+
+postulate
+  generateTreeList : ∀ (b : Board) (l : List GameTree) (val-l : length l ≡ length (validMoves b)) 
+    → generateTree (inj₁ b) ≡ node b l val-l → (m : Move) → (p : m ∈ validMoves b) → generateTree (makeMove b m p) ∈ l
+
+  generateTreeBoard : ∀ (b : Board) → ∃₂ (λ (l : List GameTree) (val-l : length l ≡ length (validMoves b)) 
+                                         → generateTree (inj₁ b) ≡ node b l val-l)
+
 --------------------------------
 --  Properties of bestResult  --
 --------------------------------
 
-mutual
-  resultNodeDefault : ∀ (c : Color)(r : Result)(l : List GameTree) → r ⊑ resultNode c r l [ c ]
-  resultNodeDefault c r []       = ⊑-refl
-  resultNodeDefault c r (x ∷ xs) = ⊑-trans ⊑-max-l (resultNodeDefault c (maxByColor c r (resultColor (otherColor c) x)) xs) 
-                                                                      
-                                                                      
-  resultNodeValid : ∀ (c : Color)(r : Result)(l : List GameTree)(t : GameTree)(t∈l : t ∈ l) 
-    → resultColor (otherColor c) t ⊑ resultNode c r l [ c ]
-  resultNodeValid c r [] t ()
-  resultNodeValid c r (x ∷ xs) .x ∈-take = {!resultNodeDefault c r xs !}
-  resultNodeValid c r (x ∷ xs) t (∈-drop y) = resultNodeValid c (maxByColor c r (resultColor (otherColor c) x)) xs t y
-                                                                                                                     
+resultNodeDefault : ∀ (c : Color)(r : Result)(l : List GameTree) → r ⊑ resultNode c r l [ c ]
+resultNodeDefault c r []       = ⊑-refl
+resultNodeDefault c r (x ∷ xs) = ⊑-trans ⊑-max-l (resultNodeDefault c (maxByColor c r (resultColor (otherColor c) x)) xs) 
+
+resultNodeValid : ∀ (c : Color) (r : Result) (l : List GameTree) (t : GameTree) (t∈l : t ∈ l) 
+                                  → resultColor (otherColor c) t ⊑ resultNode c r l [ c ]
+resultNodeValid c r [] t ()
+resultNodeValid c r (x ∷ xs) .x ∈-take    = ⊑-trans ⊑-max-r (resultNodeDefault c (maxByColor c r (resultColor (otherColor c) x)) xs)
+resultNodeValid c r (x ∷ xs) t (∈-drop y) = resultNodeValid c (maxByColor c r (resultColor (otherColor c) x)) xs t y
+
+resultNodeInv : ∀ (c : Color) (r result : Result) (l : List GameTree) → resultNode c r l ≡ result 
+  → result ≡ r ⊎ ∃ (λ (t : GameTree) → t ∈ l × result ≡ resultColor (otherColor c) t)
+resultNodeInv c r result []       resNode = inj₁ (sym resNode)
+resultNodeInv c r result (x ∷ xs) resNode with resultNodeInv c ((maxByColor c r (resultColor (otherColor c) x))) result xs resNode
+resultNodeInv c r result (x ∷ xs) resNode | inj₁ x' with maxByColor-inv c r (resultColor (otherColor c) x)
+resultNodeInv c r result (x ∷ xs) resNode | inj₁ x0 | inj₁ x' rewrite x'     = inj₁ x0
+resultNodeInv c r result (x ∷ xs) resNode | inj₁ x' | inj₂ y  rewrite sym x' = inj₂ (x , ∈-take , y)
+resultNodeInv c r result (x ∷ xs) resNode | inj₂ (t , t∈xs , res)            = inj₂ (t , ∈-drop t∈xs , res)
+
 bestResultValid : ∀ (b : Board) (m : Move) (p : m ∈ validMoves b) → bestResult (makeMove b m p) ⊑ bestResult (inj₁ b) [ currentPlayer b ]
-bestResultValid b m p = {!!}
+bestResultValid b m p with generateTreeBoard b
+bestResultValid b m p | [] , len-l , genTree≡node-l = ⊥-elim (lem-∈-len-nonzero p len-l)
+bestResultValid b m p | x ∷ xs , len-l , genTree≡node-l = {!!}
                         
 
 ----------------------------------------

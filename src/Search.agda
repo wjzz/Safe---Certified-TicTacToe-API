@@ -1,3 +1,5 @@
+{-# OPTIONS --universe-polymorphism #-}
+
 {- This file presents many theorems about the properties of both the implementation
   from the Game.agda file and of the TicTacToe game itself.
 
@@ -119,7 +121,12 @@ noStuckBoard (goodBoard {c} {n} n<9 ms dist noWin) | no ¬p6 | no ¬p5 | no ¬p4
                                                                      
   final-lem : 9 ≤ n
   final-lem = subst (λ m → 9 ≤ m) len lem
-                                      
+
+ABSURD-CASE : ∀ {w} {Whatever : Set w} (b : Board) → (0 ≡ length (validMoves b)) → Whatever
+ABSURD-CASE b y with noStuckBoard b
+... | move , p = ⊥-elim (lem-∈-len-nonzero p y)
+
+{- BASE global ABSURD-CASE -}
                                       
 postulate
   lem-filterDec-add : ∀ {c n} (ms : Moves c n) (m : Move) →  {- distinctm ms → -}
@@ -321,9 +328,10 @@ generateTreeIter (inj₂ fin) rec = leaf fin
 generateTreeIter (inj₁ b)   rec = node b (map-in (boardSuccessors b)(λ a val → rec a (lem-successors-in b a val))) 
   (trans (lem-length-map-in (boardSuccessors b) ((λ a val → rec a (lem-successors-in b a val)))) 
          (lem-length-map-in (validMoves b) (makeMove b)))
-                                                     
-generateTree : Board ⊎ FinishedBoard → GameTree
-generateTree = bf-recursor (λ x → GameTree) generateTreeIter
+        
+abstract                                             
+  generateTree : Board ⊎ FinishedBoard → GameTree
+  generateTree = bf-recursor (λ x → GameTree) generateTreeIter
                                             
 ---------------------------------------
 --  All possible games of TicTacToe  --
@@ -344,11 +352,7 @@ mutual
   depth : GameTree → ℕ
   depth (leaf y) = 0
   depth (node b (x ∷ xs) y) = depthNode (depth x) xs
-                                                  
-  -- impossible case, the successor list can't be empty
-  depth (node b [] y) with inspect (validMoves b) | noStuckBoard b
-  depth (node b [] y) | []       with-≡ eq | move , p rewrite eq = ⊥-elim (lem-∉-empty move p)
-  depth (node b [] y) | (m ∷ ms) with-≡ eq | move , p rewrite eq = ⊥-elim (lem-zero-neq-suc y)
+  depth (node b [] y) = ABSURD-CASE b y
                                                                                             
   depthNode : ℕ → List GameTree → ℕ
   depthNode d []       = 1 + d
@@ -377,9 +381,7 @@ mutual
   resultColor c (node b (x ∷ xs) y) = resultNode c (resultColor (otherColor c) x) xs
 
   -- impossible case
-  resultColor c (node b [] y) with inspect (validMoves b) | noStuckBoard b
-  ... | []       with-≡ eq | move , p rewrite eq = ⊥-elim (lem-∉-empty move p)
-  ... | (m ∷ ms) with-≡ eq | move , p rewrite eq = ⊥-elim (lem-zero-neq-suc y)
+  resultColor c (node b [] y) = ABSURD-CASE b y
   
   resultNode : Color → Result → List GameTree → Result
   resultNode c r []       = r
@@ -405,9 +407,7 @@ mutual
   resultColor2 c (node b (x ∷ xs) y) = resultNode2 c (resultColor2 (otherColor c) x) xs
 
   -- impossible case
-  resultColor2 c (node b [] y) with inspect (validMoves b) | noStuckBoard b
-  ... | []       with-≡ eq | move , p rewrite eq = ⊥-elim (lem-∉-empty move p)
-  ... | (m ∷ ms) with-≡ eq | move , p rewrite eq = ⊥-elim (lem-zero-neq-suc y)
+  resultColor2 c (node b [] y) = ABSURD-CASE b y
   
   resultNode2 : Color → Result → List GameTree → Result
   resultNode2 X (Win X) xs = Win X
@@ -428,9 +428,7 @@ mutual
   resultColor3 c (node b (x ∷ xs) y) = resultNode3 c (resultColor3 (otherColor c) x) xs
 
   -- impossible case
-  resultColor3 c (node b [] y) with inspect (validMoves b) | noStuckBoard b
-  ... | []       with-≡ eq | move , p rewrite eq = ⊥-elim (lem-∉-empty move p)
-  ... | (m ∷ ms) with-≡ eq | move , p rewrite eq = ⊥-elim (lem-zero-neq-suc y)
+  resultColor3 c (node b [] y) = ABSURD-CASE b y
   
   resultNode3 : Color → Result → List GameTree → Result
   resultNode3 c r []       = r
@@ -456,9 +454,7 @@ resultNode3-step {c} r r' (x ∷ xs) = maxByColorAssoc c r r' (resultNode3 c (re
 mutual
   resultColorEquiv : ∀ (c : Color) (t : GameTree) → resultColor c t ≡ resultColor2 c t
   resultColorEquiv c (leaf y) = refl
-  resultColorEquiv c (node b [] y) with inspect (validMoves b) | noStuckBoard b
-  ... | []       with-≡ eq | move , p = ⊥-elim (lem-∉-empty move (lem-∈-eq-l move (validMoves b) [] eq p))
-  ... | (m ∷ ms) with-≡ eq | move , p = ⊥-elim (lem-zero-neq-suc (subst (_≡_ 0) (lem-length-eq eq) y))
+  resultColorEquiv c (node b [] y) = ABSURD-CASE b y
   
   resultColorEquiv c (node b (x ∷ xs) y) rewrite resultColorEquiv (otherColor c) x 
     = resultNodeEquiv c (resultColor2 (otherColor c) x) xs
@@ -489,9 +485,7 @@ bestResultEquiv bf = resultColorEquiv (getColor bf) (generateTree bf)
 mutual
   resultColorEquiv3 : ∀ (c : Color) (t : GameTree) → resultColor c t ≡ resultColor3 c t
   resultColorEquiv3 c (leaf y) = refl
-  resultColorEquiv3 c (node b [] y) with inspect (validMoves b) | noStuckBoard b
-  ... | []       with-≡ eq | move , p = ⊥-elim (lem-∉-empty move (lem-∈-eq-l move (validMoves b) [] eq p))
-  ... | (m ∷ ms) with-≡ eq | move , p = ⊥-elim (lem-zero-neq-suc (subst (_≡_ 0) (lem-length-eq eq) y))
+  resultColorEquiv3 c (node b [] y) = ABSURD-CASE b y
   
   resultColorEquiv3 c (node b (x ∷ xs) y) rewrite resultColorEquiv3 (otherColor c) x 
     = resultNodeEquiv3 c (resultColor3 (otherColor c) x) xs
@@ -500,13 +494,11 @@ mutual
   resultNodeEquiv3 c r [] = refl
   resultNodeEquiv3 c r (x ∷ xs) rewrite sym (resultColorEquiv3 (otherColor c) x) | resultNodeEquiv3 c (maxByColor c r (resultColor (otherColor c) x)) xs 
     = resultNode3-step r (resultColor (otherColor c) x) xs
-                                                        
+
 -- main result
-        
+
 bestResultEquiv3 : ∀ (bf : Board ⊎ FinishedBoard) → bestResult bf ≡ bestResult3 bf
 bestResultEquiv3 bf = resultColorEquiv3 (getColor bf) (generateTree bf)
-                                                                    
-
 
 ---------------------------------
 --  Example queries and calls  --
