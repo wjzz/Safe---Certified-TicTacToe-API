@@ -146,6 +146,20 @@ validMovesLength (goodBoard n<9 ms dist noWin) | cond = trans (removeDec-length 
                                                         (sym (cong (_∸_ 9) cond))
                                                                            
 
+-- TODO
+-- the pattern in the next three proof needs to be abstracted away to a seperate lemma
+
+currPlayerMakeMove : ∀ (b b' : Board)(m : Move) → (p : m ∈ validMoves b) → makeMove b m p ≡ inj₁ b' → currentPlayer b' ≡ otherColor (currentPlayer b)
+currPlayerMakeMove (goodBoard {c} {n} n<9 ms dist noWin) b' m p b'-makeMove-b with wonDec X (ms ▸ m)
+currPlayerMakeMove (goodBoard n<9 ms dist noWin) b' m p' () | yes p
+currPlayerMakeMove (goodBoard n<9 ms dist noWin) b' m p b'-makeMove-b | no ¬p with wonDec O (ms ▸ m)
+currPlayerMakeMove (goodBoard n<9 ms dist noWin) b' m p' () | no ¬p | yes p
+currPlayerMakeMove (goodBoard {c} {n} n<9 ms dist noWin) b' m p b'-makeMove-b | no ¬p' | no ¬p with suc n ≟ℕ 9
+currPlayerMakeMove (goodBoard n<9 ms dist noWin) b' m p' () | no ¬p' | no ¬p | yes p
+currPlayerMakeMove (goodBoard {c} {n} n<9 ms dist noWin) b' m p b'-makeMove-b | no ¬p0 | no ¬p' | no ¬p with lem-≤-cases-ext (suc n) 9 n<9 ¬p
+currPlayerMakeMove (goodBoard n<9 ms dist noWin) .(goodBoard (s≤s m≤n) (ms ▸ m) 
+  (dist-cons dist (validMoves-distinct m ms n<9 dist noWin p)) (¬p0 , ¬p')) m p refl | no ¬p0 | no ¬p' | no ¬p | s≤s m≤n = refl
+
                                                                            
 movesNoMakeMove : ∀ (b b' : Board)(m : Move) → (p : m ∈ validMoves b) → makeMove b m p ≡ inj₁ b' → suc (movesNo b) ≡ movesNo b'
 movesNoMakeMove (goodBoard {c} {n} n<9 ms dist noWin) b' m p b'-makeMove-b with wonDec X (ms ▸ m)
