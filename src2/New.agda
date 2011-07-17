@@ -1,4 +1,4 @@
->{-
+{-
   @author: Wojciech Jedynak (wjedynak@gmail.com)
 -}
 module New where
@@ -106,3 +106,6 @@ mutual
   iter acc (x ∷ xs) = iter (allTheWay x ++ acc) xs
 
 -}
+
+n : ℕ
+n = {!!}
