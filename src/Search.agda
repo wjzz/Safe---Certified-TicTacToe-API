@@ -265,15 +265,6 @@ allGamesTerminate b = b-recursor (λ x → ∃₂ (λ (l : List Move) (fin : Fin
                                  allGamesTerminateIter b
 
                                                        
------------------------------------------------------------
---  Formalization on the notion of best possible result  --
------------------------------------------------------------
-  
-data BestResult : Board → Result → Set where
-  best : (b : Board) (result : Result) →               {- Permutation l (validMoves b) ? -}
-    (∀ (l : List Move)(fin : FinishedBoard) → 
-       distinct l → l ⊂ validMoves b → (tryMoves (inj₁ b) l ≡ inj₂ fin) → getResult fin ⊑ result [ currentPlayer b ]) 
-    → BestResult b result
                    
 ---------------------------------------------------------------------------------------------------
 --  Functions that analyze all possible outcomes and return the optimal result for both players  --
@@ -343,9 +334,9 @@ generateTreeIter (inj₁ b)   rec = node b (map-in (boardSuccessors b)(λ a val 
   (trans (lem-length-map-in (boardSuccessors b) ((λ a val → rec a (lem-successors-in b a val)))) 
          (lem-length-map-in (validMoves b) (makeMove b)))
         
-abstract                                             
-  generateTree : Board ⊎ FinishedBoard → GameTree
-  generateTree = bf-recursor (λ x → GameTree) generateTreeIter
+--abstract                                             
+generateTree : Board ⊎ FinishedBoard → GameTree
+generateTree = bf-recursor (λ x → GameTree) generateTreeIter
                                             
 ---------------------------------------
 --  All possible games of TicTacToe  --

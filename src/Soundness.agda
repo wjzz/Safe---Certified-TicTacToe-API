@@ -34,13 +34,43 @@ postulate
   generateTreeList : ∀ (b : Board) (l : List GameTree) (val-l : length l ≡ length (validMoves b)) 
     → generateTree (inj₁ b) ≡ node b l val-l → (m : Move) → (p : m ∈ validMoves b) → generateTree (makeMove b m p) ∈ l
 
-  generateTreeBoard : ∀ (b : Board) → ∃₂ (λ (l : List GameTree) (val-l : length l ≡ length (validMoves b)) 
-                                         → generateTree (inj₁ b) ≡ node b l val-l)
+--  generateTreeBoard : ∀ (b : Board) → ∃₂ (λ (l : List GameTree) (val-l : length l ≡ length (validMoves b)) 
+--                                         → generateTree (inj₁ b) ≡ node b l val-l)
   
-  generateTreeLeaf : ∀ (f : FinishedBoard) → generateTree (inj₂ f) ≡ leaf f
+--  generateTreeLeaf : ∀ (f : FinishedBoard) → generateTree (inj₂ f) ≡ leaf f
 
   generateTreeLastNode : ∀ (b : Board) (m : Move) (p : m ∈ validMoves b) (fin : FinishedBoard) →
     makeMove b m p ≡ inj₂ fin → ∃ (λ len → generateTree (inj₁ b) ≡ node b (leaf fin ∷ []) len)
+
+--generateTreeIter : (x : Board ⊎ FinishedBoard)(rec : (x0 : Board ⊎ FinishedBoard) → (x1 : x0 ≪ x) → GameTree) → GameTree
+
+generateTreeLeaf : ∀ (f : FinishedBoard) → generateTree (inj₂ f) ≡ leaf f
+generateTreeLeaf f = refl
+
+generateTreeBoard : ∀ (b : Board) → ∃₂ (λ (l : List GameTree) (val-l : length l ≡ length (validMoves b)) 
+                                         → generateTree (inj₁ b) ≡ node b l val-l)
+generateTreeBoard b = {!bf-recursor!}
+
+{-
+(P' : Board ⊎ FinishedBoard → Set) →
+((x : Board ⊎ FinishedBoard) →
+ ((y : Board ⊎ FinishedBoard) →
+  suc (measure y) ≤′ measure x → P' y) →
+ P' x) →
+(x : Board ⊎ FinishedBoard) → P' x
+-}
+
+{-
+
+-----------------------------------------------------------
+--  Formalization on the notion of best possible result  --
+-----------------------------------------------------------
+  
+data BestResult : Board → Result → Set where
+  best : (b : Board) (result : Result) →               -- Permutation l (validMoves b) ?
+    (∀ (l : List Move)(fin : FinishedBoard) → 
+       distinct l → l ⊂ validMoves b → (tryMoves (inj₁ b) l ≡ inj₂ fin) → getResult fin ⊑ result [ currentPlayer b ]) 
+    → BestResult b result
 
 --------------------------------
 --  Properties of bestResult  --
@@ -104,14 +134,21 @@ uniquenessOfBestResult b r1 r2 best1 best2 = uncurry′ ⊑-antisym (uniquenessO
 inj2-inv : ∀ {f f' : FinishedBoard} → _≡_ {A = Board ⊎ FinishedBoard} (inj₂ f) (inj₂ f') → f ≡ f'
 inj2-inv refl = refl
                 
-bestResultSound : ∀ (b : Board)(l : List Move)(fin : FinishedBoard) → distinct l → l ⊂ validMoves b 
-  → tryMoves (inj₁ b) l ≡ inj₂ fin → getResult fin ⊑ bestResult (inj₁ b) [ currentPlayer b ]
+postulate
+  makeMoveLemma : ∀ (b b' : Board)(m : Move)(ms : List Move)(p : m ∈ validMoves b) → makeMove b m p ≡ inj₁ b' → m ∉ ms → 
+    ms ⊂ validMoves b → ms ⊂ validMoves b'
+
+-- → bestResult (makeMove b m p) ⊑ bestResult (inj₁ b) [ currentPlayer b ]
+bestResultSound : ∀ (b : Board)(l : List Move)(fin : FinishedBoard) → distinct l → l ⊂ validMoves b → tryMoves (inj₁ b) l ≡ inj₂ fin
+                                              → getResult fin ⊑ bestResult (inj₁ b) [ currentPlayer b ]
 bestResultSound b [] fin dist l-val ()
-bestResultSound b (m ∷ ms) fin (dist-cons dist y) (cons y' m∈val) try rewrite lem-member-refl-valid b m m∈val with inspect (makeMove b m m∈val)
-... | inj₂ f  with-≡ eq rewrite eq | sym (inj2-inv try) = {!!}
-... | inj₁ b' with-≡ eq = {!!}
-                          
+bestResultSound b (m ∷ ms) fin (dist-cons dist y) (cons y' m∈val) try with inspect (makeMove b m m∈val) | bestResultValid b m m∈val 
+... | inj₂ f  with-≡ eq | bestResult rewrite lem-member-refl-valid b m m∈val | eq | sym (inj2-inv try) | generateTreeLeaf f = bestResult
+... | inj₁ b' with-≡ eq | bestResult rewrite lem-member-refl-valid b m m∈val | eq with bestResultSound b' ms fin dist (makeMoveLemma b b' m ms m∈val eq y y') try
+... | rec = {!⊑-trans rec bestResult!}
                           
                           
 soundResult : ∀ (b : Board) → BestResult b (bestResult (inj₁ b))
 soundResult b = best b (bestResult (inj₁ b)) (bestResultSound b)
+
+-}
