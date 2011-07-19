@@ -22,7 +22,9 @@ open import Data.Vec.Utils renaming ( map-in to vmap-in
 
 open import Data.Empty
 open import Data.Nat.Theorems
-open import Data.List.Theorems renaming ( _∈_ to _∈-list_)
+open import Data.List.Theorems renaming ( _∈_ to _∈-list_
+                                        ; _∉_ to _∉-list_
+                                        )
 open import Relation.Nullary
 open import Relation.Binary
 open import Relation.Binary.PropositionalEquality
@@ -252,6 +254,33 @@ module GameImplementation where
   oMovesVec {.O} (m ∷ (_∷_ {O} m' ms)) = m' ∷ oMovesVec ms
   oMovesVec {.X} (m ∷ (_∷_ {X} m' ms)) = m  ∷ oMovesVec ms
 
+  movesByColor : forall {c0 n} → (c : Color) → (m : Moves c0 n) → List Move
+  movesByColor X m = xMoves m
+  movesByColor O m = oMoves m
+
+  movesByColorVec : forall {c0 n} → (c : Color) → (m : Moves c0 n) → Vec Move (colorwiseHalf c n)
+  movesByColorVec X m = xMovesVec m
+  movesByColorVec O m = oMovesVec m
+
+  lem-same-color : ∀ {n} (cand : Color) → (m : Move) (ms : Moves (otherColor cand) n) → movesByColor cand ms ≡ movesByColor cand (m ∷ ms)
+  lem-same-color X m ms = refl
+  lem-same-color O m ms = refl
+
+  lem-other-color : ∀ {n} (cand : Color) → (m : Move) (ms : Moves cand n) → m ∷ movesByColor cand ms ≡ movesByColor cand (m ∷ ms)
+  lem-other-color X m ms = refl
+  lem-other-color O m ms = refl
+
+  lem-movesByColor-ext : ∀ {c n} (cand : Color) → (m : Move) (ms : Moves c n) → movesByColor cand ms ⊂ movesByColor cand (m ∷ ms)
+  lem-movesByColor-ext {X} X m ms = lem-⊂-ext m (xMoves ms) (xMoves ms) (⊂-refl (xMoves ms))
+  lem-movesByColor-ext {O} X m ms = ⊂-refl (xMoves ms)
+  lem-movesByColor-ext {X} O m ms = ⊂-refl (oMoves ms)
+  lem-movesByColor-ext {O} O m ms = lem-⊂-ext m (oMoves ms) (oMoves ms) (⊂-refl (oMoves ms))
+
+  -------------------------
+  --  winning positions  --
+  -------------------------
+
+  -- winning configurations
 
   winningPositions : List (List Move)
   winningPositions = (P11 ∷ P12 ∷ P13 ∷ []) ∷                        -- horizontal 
@@ -280,32 +309,7 @@ module GameImplementation where
                         (P13 ∷ P22 ∷ P31 ∷ []) ∷ 
                         []
 
-
-  movesByColor : forall {c0 n} → (c : Color) → (m : Moves c0 n) → List Move
-  movesByColor X m = xMoves m
-  movesByColor O m = oMoves m
-
-  movesByColorVec : forall {c0 n} → (c : Color) → (m : Moves c0 n) → Vec Move (colorwiseHalf c n)
-  movesByColorVec X m = xMovesVec m
-  movesByColorVec O m = oMovesVec m
-
-  lem-same-color : ∀ {n} (cand : Color) → (m : Move) (ms : Moves (otherColor cand) n) → movesByColor cand ms ≡ movesByColor cand (m ∷ ms)
-  lem-same-color X m ms = refl
-  lem-same-color O m ms = refl
-
-  lem-other-color : ∀ {n} (cand : Color) → (m : Move) (ms : Moves cand n) → m ∷ movesByColor cand ms ≡ movesByColor cand (m ∷ ms)
-  lem-other-color X m ms = refl
-  lem-other-color O m ms = refl
-
-  lem-movesByColor-ext : ∀ {c n} (cand : Color) → (m : Move) (ms : Moves c n) → movesByColor cand ms ⊂ movesByColor cand (m ∷ ms)
-  lem-movesByColor-ext {X} X m ms = lem-⊂-ext m (xMoves ms) (xMoves ms) (⊂-refl (xMoves ms))
-  lem-movesByColor-ext {O} X m ms = ⊂-refl (xMoves ms)
-  lem-movesByColor-ext {X} O m ms = ⊂-refl (oMoves ms)
-  lem-movesByColor-ext {O} O m ms = lem-⊂-ext m (oMoves ms) (oMoves ms) (⊂-refl (oMoves ms))
-
-  -------------------------
-  --  winning positions  --
-  -------------------------
+  -- the won relation for the Moves type
 
   data WonC : forall {c n} → (winner : Color) (ms : Moves c n) → Set where
     wonC : ∀ {c n winner} → (m : Moves c n) → (winning : List Move) →
@@ -315,13 +319,15 @@ module GameImplementation where
   
   noWinner : forall {c n} → Moves c n → Set
   noWinner b = (¬ WonC X b) × (¬ WonC O b)
+
+  -- basic properties 
                                         
   lem-won-empty : ∀ (c : Color) → ¬ WonC c []
   lem-won-empty c (wonC .[] .[] (∈-drop (∈-drop (∈-drop (∈-drop (∈-drop (∈-drop (∈-drop (∈-drop ())))))))) nil)
   lem-won-empty X (wonC .[] .(m ∷ ms) y (cons {m} {ms} y' ()))
   lem-won-empty O (wonC .[] .(m ∷ ms) y (cons {m} {ms} y' ()))
 
-  lem-win-extend : ∀ {c n} → (winner : Color)(ms : Moves c n) → (m : Move) → WonC winner ms → WonC winner (m ∷ ms)
+  lem-win-extend : ∀ {c n} → (winner : Color) (ms : Moves c n) → (m : Move) → WonC winner ms → WonC winner (m ∷ ms)
   lem-win-extend winner ms m (wonC .ms winning winningPosition winnning∈movesByClr) 
     = wonC (m ∷ ms) winning winningPosition (⊂-trans winnning∈movesByClr (lem-movesByColor-ext winner m ms))
 
@@ -346,19 +352,128 @@ module GameImplementation where
     lem : (x : WonC cand ms) → ⊥
     lem (wonC .ms winning y y') = noWinningPosition (winning , y , y')
 
-  --------------------------------
-  --    Every move is unique    --
-  --------------------------------
+  ------------------------------------------------------
+  --  A relation that forces every move to be unique  --
+  ------------------------------------------------------
 
   -- a moves list is distinct iff all moves are unique
 
-  data distinctm : {c : Color}{n : ℕ} → Moves c n → Set where
-    dist-nil  : distinctm []
-    dist-cons : {c : Color}{n : ℕ} → {m : Move}{ms : Moves c n} → (v : distinctm ms) → 
-                            m ∉' ms → distinctm (m ∷ ms)
+  data distinct-m : {c : Color} {n : ℕ} → Moves c n → Set where
+    dist-nil  : distinct-m []
+    dist-cons : {c : Color} {n : ℕ} → {m : Move} {ms : Moves c n} → 
+                (v-ms : distinct-m ms) → (m∉ms : m ∉' ms) → distinct-m (m ∷ ms)
+
+  ---------------------------------------------------------------------------------
+  --  A relation that states that {made}moves and valid{Moves} form a partition  --
+  ---------------------------------------------------------------------------------
+
+  data Partition : {n k : ℕ} {c : Color} → Moves c k → Vec Move n → Set where
+    part : {n k : ℕ} {c : Color} 
+         → (moves   : Moves c k) 
+         → (valid   : Vec Move n)
+         → (all     : ∀ (m : Move) → m ∈' moves ⊎ m ∈ valid)
+         → (m-not-v : ∀ (m : Move) → m ∈' moves → m ∉  valid)
+         → (v-not-m : ∀ (m : Move) → m ∈  valid → m ∉' moves)
+         → Partition moves valid
+
+  ---------------------------------
+  --  Board types - WorkerBoard  --
+  ---------------------------------
 
 
+  data WorkerBoard : {-ℕ → -}Set where
+    worker : {n : ℕ}                                               -- number of possible moves
+           → {c : Color}                                           -- color of pl. to move
+           → {k : ℕ}                                               -- number of made moves
+
+           → (k<9 : k < 9)
+           → (n+k : n + k ≡ 9)                                     -- reified invariant
+
+           → (moves : Moves c k)                                   -- moves made so far
+           → (valid : Vec Move n)                                  -- list of possible moves
+           → (m     : Move)                                        -- the last move
+
+           → (m-new  : m ∉' moves)
+           → (m-dist : distinct-m (m ∷ moves))
+           → (v-dist : distinct-v valid)
+           → (noWin  : noWinner moves)
+
+           → WorkerBoard --(pred n)                                   -- we index by the amount of valid moves
+
+  -- Commentary:
+  -- The WorkerBoard represents a game that might have been concluded **just now**.
+
+  -- Q: Why do we store the last move independently of moves (and valid)?
+  -- A: This makes the task of implementing the undo operation trivial - all pieces are assembled.
+
+  -- TODO: add m ∈ valid
+  --       state that valid and moves form a partition of the Move type
+
+  noWinnerW : {-{n : ℕ} → -} WorkerBoard → Set
+  noWinnerW (worker k<9 n+k moves valid m m-new m-dist v-dist noWin) = noWinner (m ∷ moves)
+
+  wonW : {-{n : ℕ} → -} Color → WorkerBoard → Set
+  wonW c (worker k<9 n+k moves valid m m-new m-dist v-dist noWin) = WonC c (m ∷ moves)
+
+  wMovesNo : WorkerBoard → ℕ
+  wMovesNo (worker {n} {c} {k} k<9 n+k moves valid m m-new m-dist v-dist noWin) = suc k
+
+  -- no of valid moves BEFORE the last one
+
+  wValidNo : WorkerBoard → ℕ
+  wValidNo (worker {n} {c} {k} k<9 n+k moves valid m m-new m-dist v-dist noWin) = n
 
 
+  ---------------------------
+  --  Board types - Board  --
+  ---------------------------
 
-open GameImplementation
+  data Board : ℕ → Set where
+    board  : {n : ℕ}                                               -- number of possible moves
+           → {c : Color}                                           -- color of pl. to move
+           → {k : ℕ}                                               -- number of made moves
+
+           → (k<9 : k < 9)
+           → (n+k : n + k ≡ 9)                                     -- reified invariant
+
+           → (moves : Moves c k)                                   -- moves made so far
+           → (valid : Vec Move n)                                  -- list of possible moves
+
+           → (m-dist : distinct-m moves)
+           → (v-dist : distinct-v valid)
+           → (noWin  : noWinner moves)
+
+           → Board n                                               -- we index by the amount of valid moves
+  
+
+  -----------------------------------
+  --  Board types - FinishedBoard  --
+  -----------------------------------
+
+  data FinishedBoard : Set where
+    draw : (wb : WorkerBoard) → wMovesNo wb ≡ 9 → noWinnerW wb → FinishedBoard
+    win  : (wb : WorkerBoard) → (c : Color) → wonW c wb → FinishedBoard
+
+  -----------------------
+  --  Undo operations  --
+  -----------------------
+
+  undoWorker : (wb : WorkerBoard) → Board (wValidNo wb)
+  undoWorker (worker k<9 n+k moves valid m m-new (dist-cons v m∉ms) v-dist noWin) = board k<9 n+k moves valid v v-dist noWin
+
+  undoFin : FinishedBoard → ∃ Board
+  undoFin (draw wb _ _) = _ , undoWorker wb
+  undoFin (win  wb _ _) = _ , undoWorker wb
+
+
+  undo : {n : ℕ} → Board n → Board (suc n)
+  undo (board k<9 n+k [] valid m-dist v-dist noWin) = {!!} -- IMPOSSIBLE; ABSURD CASE
+  undo (board {n = n} {k = suc k} k<9 n+k (m ∷ ms) valid (dist-cons v-ms m∉ms) v-dist noWin) rewrite sym (lem-plus-s n k)
+    = board (lem-<-trans lem-≤-refl k<9) n+k ms (m ∷ valid) v-ms 
+            {!!}  -- distinct-v (m ∷ valid)      -- we can't prove it yet...
+                  -- TODO: we need to add a inv. that
+                  -- ∀ m ∈' moves b => m ∉ valid b (and vice-versa)
+
+            ((λ x → proj₁ noWin (lem-win-extend X ms m x)) , (λ x → proj₂ noWin (lem-win-extend O ms m x)))
+
+  -- TODO add partition fields to constructors
