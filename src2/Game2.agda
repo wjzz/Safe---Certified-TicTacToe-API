@@ -1,7 +1,12 @@
+-----------------------------------------------------------------------------------
+--  This version uses records for boards and other single-constructor datatypes  --
+-----------------------------------------------------------------------------------
+
+
 {-
   @author: Wojciech Jedynak (wjedynak@gmail.com)
 -}
-module Game where
+module Game2 where
 
 -- computational parts
 
@@ -376,47 +381,65 @@ module GameImplementation where
          → (v-not-m : ∀ (m : Move) → m ∈  valid → m ∉' moves)
          → partition moves valid
 
-  -- lemmas
+  ---------------------------------------------------------
+  --  A datatype for storing proofs of board invariants  --
+  ---------------------------------------------------------
 
-{- given
-v-not-m : (m0 : Move) → m0 ∈ valid → m0 ∈' m ∷ ms → ⊥
-m-not-v : (m0 : Move) → m0 ∈' m ∷ ms → m0 ∈ valid → ⊥
-all     : (m0 : Move) → m0 ∈' m ∷ ms ⊎ m0 ∈ valid
-m∉ms    : m ∈' ms → ⊥
-v-ms    : distinct-m ms
-v-dist  : distinct-v valid
+  record invariants {n k : ℕ} {c : Color} (moves : Moves c k) (valid : Vec Move n) : Set where
+   constructor c-inv
+   field
+     n+k       : n + k ≡ 9
+     k<9       : k < 9
+     distMoves : distinct-m moves
+     distValid : distinct-v valid
+     partit    : partition moves valid
+     noWin     : noWinner moves
 
-we need to prove
+  module I = invariants
+  open I
 
-p1 : (m' : Move) → m' ∈' ms ⊎ m' ∈ m ∷ valid
-p2 : (m' : Move) → m' ∈' ms → m' ∈ m ∷ valid → ⊥
-p3 : (m' : Move) → m' ∈ m ∷ valid → m' ∈' ms → ⊥
+  -------------------------------------------------------------
+  --  Preservation of invariants for basic board operations  --
+  -------------------------------------------------------------
 
--}
+
+  partition-undo : {n k : ℕ} {c : Color} {ms : Moves c k} {v : Vec Move n} {m : Move}
+                 → (dm : distinct-m (m ∷ ms)) → (dv : distinct-v v) → partition (m ∷ ms) v 
+                 → partition ms (m ∷ v) × distinct-m ms × distinct-v (m ∷ v)
+
+  partition-undo {ms = ms} {v = v} {m = m} (dist-cons v-ms m∉ms) dv (part all m-not-v v-not-m) = (part all2 mv2 vm2) , (v-ms , dmv) where
+    all2 : (m' : Move) → m' ∈' ms ⊎ m' ∈ m ∷ v
+    all2 m2 with all m2
+    all2 .m | inj₁ here      = inj₂ here
+    all2 m2 | inj₁ (there y) = inj₁ y
+    all2 m2 | inj₂ y         = inj₂ (there y)
+
+    mv2 : (m' : Move) → m' ∈' ms → m' ∈ m ∷ v → ⊥
+    mv2 .m m2∈ms here         = m∉ms m2∈ms
+    mv2 m2 m2∈ms (there x∈xs) = v-not-m m2 x∈xs (there m2∈ms)
+
+    vm2 : (m' : Move) → m' ∈ m ∷ v → m' ∈' ms → ⊥
+    vm2 .m here m2∈ms         = m∉ms m2∈ms
+    vm2 m2 (there x∈xs) m2∈ms = v-not-m m2 x∈xs (there m2∈ms)
+
+    dmv : distinct-v (m ∷ v)
+    dmv = dist-cons dv (λ x → v-not-m m x here)
 
   ---------------------------------
   --  Board types - WorkerBoard  --
   ---------------------------------
-
 
   data WorkerBoard : {-ℕ → -}Set where
     worker : {n : ℕ}                                               -- number of possible moves
            → {c : Color}                                           -- color of pl. to move
            → {k : ℕ}                                               -- number of made moves
 
-           → (k<9 : k < 9)
-           → (n+k : n + k ≡ 9)                                     -- reified invariant
-
            → (moves : Moves c k)                                   -- moves made so far
            → (valid : Vec Move n)                                  -- list of possible moves
            → (m     : Move)                                        -- the last move
 
-           → (m-new  : m ∉' moves)
-           → (m-dist : distinct-m (m ∷ moves))
-           → (v-dist : distinct-v valid)
-           → (part   : partition moves valid)
-           → (noWin  : noWinner moves)
-
+           → .(m ∉' moves)
+           → (inv : invariants moves valid)
            → WorkerBoard --(pred n)                                   -- we index by the amount of valid moves
 
   -- Commentary:
@@ -428,20 +451,19 @@ p3 : (m' : Move) → m' ∈ m ∷ valid → m' ∈' ms → ⊥
   -- TODO: add m ∈ valid
   --       state that valid and moves form a partition of the Move type
 
-  noWinnerW : {-{n : ℕ} → -} WorkerBoard → Set
-  noWinnerW (worker k<9 n+k moves valid m m-new m-dist v-dist partit noWin) = noWinner (m ∷ moves)
+  noWinnerW : WorkerBoard → Set
+  noWinnerW = {!!} 
 
   wonW : {-{n : ℕ} → -} Color → WorkerBoard → Set
-  wonW c (worker k<9 n+k moves valid m m-new m-dist v-dist partit noWin) = WonC c (m ∷ moves)
+  wonW c = {!!} 
 
   wMovesNo : WorkerBoard → ℕ
-  wMovesNo (worker {k = k} k<9 n+k moves valid m m-new m-dist v-dist partit noWin) = suc k
+  wMovesNo = {!!} 
 
   -- no of valid moves BEFORE the last one
 
   wValidNo : WorkerBoard → ℕ
-  wValidNo (worker {n = n} {c} {k} k<9 n+k moves valid m m-new m-dist v-dist partit noWin) = n
-
+  wValidNo w = {!!}
 
   ---------------------------
   --  Board types - Board  --
@@ -451,18 +473,10 @@ p3 : (m' : Move) → m' ∈ m ∷ valid → m' ∈' ms → ⊥
     board  : {n : ℕ}                                               -- number of possible moves
            → {c : Color}                                           -- color of pl. to move
            → {k : ℕ}                                               -- number of made moves
-
-           → (k<9 : k < 9)
-           → (n+k : n + k ≡ 9)                                     -- reified invariant
-
            → (moves : Moves c k)                                   -- moves made so far
            → (valid : Vec Move n)                                  -- list of possible moves
 
-           → (m-dist : distinct-m moves)
-           → (v-dist : distinct-v valid)
-           → (part   : partition moves valid)
-           → (noWin  : noWinner moves)
-
+           → (inv : invariants moves valid)
            → Board n                                               -- we index by the amount of valid moves
   
 
@@ -474,39 +488,42 @@ p3 : (m' : Move) → m' ∈ m ∷ valid → m' ∈' ms → ⊥
     draw : (wb : WorkerBoard) → wMovesNo wb ≡ 9 → noWinnerW wb → FinishedBoard
     win  : (wb : WorkerBoard) → (c : Color) → wonW c wb → FinishedBoard
 
+  ------------------------
+  --  Board operations  --
+  ------------------------
+
+
   -----------------------
   --  Undo operations  --
   -----------------------
 
+  dist-weak : ∀ {c n m}{ms : Moves c n} → distinct-m (m ∷ ms) → distinct-m ms
+  dist-weak (dist-cons v-ms m∉ms) = v-ms
+
   undoWorker : (wb : WorkerBoard) → Board (wValidNo wb)
-  undoWorker (worker k<9 n+k moves valid m m-new (dist-cons v m∉ms) v-dist partit noWin) 
-    = board k<9 n+k moves valid v v-dist partit noWin
+  undoWorker = {!!} 
+  --(worker k<9 n+k moves valid m m-new distinct-m v-dist partit noWin) = board moves valid k<9 n+k (dist-weak distinct-m) v-dist partit noWin
 
   undoFin : FinishedBoard → ∃ Board
   undoFin (draw wb _ _) = _ , undoWorker wb
   undoFin (win  wb _ _) = _ , undoWorker wb
 
 
-  undo : {n : ℕ} → Board n → Board (suc n)
-  undo (board k<9 n+k [] valid m-dist v-dist partit noWin) = {!!} -- IMPOSSIBLE; ABSURD CASE
-  undo (board {n = n} {k = suc k} k<9 n+k (m ∷ ms) valid 
-       (dist-cons v-ms m∉ms) v-dist (part all m-not-v v-not-m) noWin) rewrite sym (lem-plus-s n k)
-   = board (lem-<-trans lem-≤-refl k<9) n+k ms (m ∷ valid) v-ms 
-            (dist-cons v-dist (λ x → v-not-m m x here))
-            (part p1 p2 p3)
+  undo : {n : ℕ} → n < 9 → Board n → Board (suc n)
+  undo n<9 b = {!!}
+  {-
+  undo n<9 (board [] valid k<9 n+k m-dist v-dist partit noWin) = ⊥-elim {!!} -- IMPOSSIBLE; ABSURD CASE
+  undo _ (board {n = n} {k = suc k} (m ∷ ms) valid k<9 n+k m-dist v-dist partit noWin) rewrite sym (lem-plus-s n k)
+   = board ms (m ∷ valid) (lem-<-trans lem-≤-refl k<9) n+k 
+            (proj₁ (proj₂ undo-part))
+            (proj₂ (proj₂ undo-part))
+            (proj₁ undo-part)
             ((λ x → proj₁ noWin (lem-win-extend X ms m x)) , 
              (λ x → proj₂ noWin (lem-win-extend O ms m x))) where
 
-              -- TODO: these will need to be extracted as lemmas
-
-              p1 : (m' : Move) → m' ∈' ms ⊎ m' ∈ m ∷ valid
-              p1 m' = {!!}
-
-              p2 : (m' : Move) → m' ∈' ms → m' ∈ m ∷ valid → ⊥
-              p2 m' m'∈ms = {!!}
-
-              p3 : (m' : Move) → m' ∈ m ∷ valid → m' ∈' ms → ⊥
-              p3 m' m'∈mv m'∈ms = {!!}
+              undo-part : partition ms (m ∷ valid) × distinct-m ms × distinct-v (m ∷ valid)
+              undo-part = partition-undo m-dist v-dist partit
+  -}
 
 -- TODOs
 
