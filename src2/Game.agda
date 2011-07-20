@@ -407,9 +407,11 @@ module GameImplementation where
   --  Preservation of invariants for basic board operations  --
   -------------------------------------------------------------
 
+  ten-nine : ¬ (10 ≤ 9)
+  ten-nine (s≤s (s≤s (s≤s (s≤s (s≤s (s≤s (s≤s (s≤s (s≤s ())))))))))
+
   inv-emptyBoard : {n : ℕ} → (v : Vec Move n) → invariants [] v → ¬ n < 9
-  inv-emptyBoard {n} v (c-inv n≡9 y' y0 y1 y2 y3) n<9 rewrite lem-plus-n-0 n | n≡9 with n<9
-  ... | s≤s (s≤s (s≤s (s≤s (s≤s (s≤s (s≤s (s≤s (s≤s ())))))))) 
+  inv-emptyBoard {n} v (c-inv n≡9 y' y0 y1 y2 y3) n<9 rewrite lem-plus-n-0 n | n≡9 = ten-nine n<9
 
   inv-undoMove : {n k : ℕ} {c : Color} {ms : Moves c k} {valid : Vec Move n} {m : Move} 
                → invariants (m ∷ ms) valid → invariants ms (m ∷ valid)
@@ -485,6 +487,9 @@ module GameImplementation where
   validMoves : {n : ℕ} → Board n → Vec Move n
   validMoves = B.valid
 
+  absurdBoard : Board 0 → ⊥
+  absurdBoard (c-board c k moves valid (c-inv y y' y0 y1 y2 y3)) rewrite y = ten-nine y'
+
   ---------------------------------
   --  Board types - WorkerBoard  --
   ---------------------------------
@@ -530,6 +535,10 @@ module GameImplementation where
   ------------------------
   --  Board operations  --
   ------------------------
+
+  getResult : FinishedBoard → Result
+  getResult (draw wb y y') = Draw
+  getResult (win wb c y)   = Win c
 
   isEmpty : {n : ℕ} → Board n → Bool
   isEmpty {9} b = true
