@@ -1,3 +1,15 @@
+-----------------------------------------------------------------------------------
+--  This version uses records for boards and other single-constructor datatypes  --
+-----------------------------------------------------------------------------------
+
+-- TODOs
+
+-- we use a lot of datatypes with exactly one field and lots (10+) of constructor arguments -
+-- this makes out patterns very long, often unnecessarily. Should we switch to records?
+-- Hey! can records be indexed? yeah, somewhat
+
+-- Should we index FinishedBoard and WorkerBoard in the same way as we index the Board type?
+
 {-
   @author: Wojciech Jedynak (wjedynak@gmail.com)
 -}
@@ -16,6 +28,7 @@ open import Data.Sum
 open import Data.Vec       renaming ( map to vmap)
 open import Data.Vec.Utils renaming ( map-in to vmap-in 
                                     ; delete to vdelete
+                                    ; _⊂_ to _⊂-v_
                                     )
 
 -- propositional parts
@@ -32,7 +45,6 @@ open import Relation.Binary.PropositionalEquality
 open ≡-Reasoning
 
 {- BASE IMPORT Data.Nat.Theorems  -}
-
 
 --------------------
 -- the color type
@@ -188,7 +200,6 @@ module GameImplementation where
     []  : Moves X 0
     _∷_ : {c : Color} {n : ℕ} → (m : Move) → (ms : Moves c n) → Moves (otherColor c) (suc n)
   
-
   -- moves membership relation
 
   infix 4 _∈'_
@@ -371,53 +382,119 @@ module GameImplementation where
     part : {n k : ℕ} {c : Color} 
          → {moves   : Moves c k}
          → {valid   : Vec Move n}
-         → (all     : ∀ (m : Move) → m ∈' moves ⊎ m ∈ valid)
-         → (m-not-v : ∀ (m : Move) → m ∈' moves → m ∉  valid)
-         → (v-not-m : ∀ (m : Move) → m ∈  valid → m ∉' moves)
+         → (union     : ∀ (m : Move) → m ∈' moves ⊎ m ∈ valid)
+         → (inter : ∀ (m : Move) → m ∈' moves → m ∈ valid → ⊥)
          → partition moves valid
 
-  -- lemmas
+  ---------------------------------------------------------
+  --  A datatype for storing proofs of board invariants  --
+  ---------------------------------------------------------
 
-{- given
-v-not-m : (m0 : Move) → m0 ∈ valid → m0 ∈' m ∷ ms → ⊥
-m-not-v : (m0 : Move) → m0 ∈' m ∷ ms → m0 ∈ valid → ⊥
-all     : (m0 : Move) → m0 ∈' m ∷ ms ⊎ m0 ∈ valid
-m∉ms    : m ∈' ms → ⊥
-v-ms    : distinct-m ms
-v-dist  : distinct-v valid
+  record invariants {n k : ℕ} {c : Color} (moves : Moves c k) (valid : Vec Move n) : Set where
+   constructor c-inv
+   field
+     n+k       : n + k ≡ 9
+     k<9       : k < 9
+     distMoves : distinct-m moves
+     distValid : distinct-v valid
+     partit    : partition moves valid
+     noWin     : noWinner moves
 
-we need to prove
+  module I = invariants
+  open I
 
-p1 : (m' : Move) → m' ∈' ms ⊎ m' ∈ m ∷ valid
-p2 : (m' : Move) → m' ∈' ms → m' ∈ m ∷ valid → ⊥
-p3 : (m' : Move) → m' ∈ m ∷ valid → m' ∈' ms → ⊥
+  -------------------------------------------------------------
+  --  Preservation of invariants for basic board operations  --
+  -------------------------------------------------------------
 
--}
+  inv-emptyBoard : {n : ℕ} → (v : Vec Move n) → invariants [] v → ¬ n < 9
+  inv-emptyBoard {n} v (c-inv n≡9 y' y0 y1 y2 y3) n<9 rewrite lem-plus-n-0 n | n≡9 with n<9
+  ... | s≤s (s≤s (s≤s (s≤s (s≤s (s≤s (s≤s (s≤s (s≤s ())))))))) 
+
+  inv-undoMove : {n k : ℕ} {c : Color} {ms : Moves c k} {valid : Vec Move n} {m : Move} 
+               → invariants (m ∷ ms) valid → invariants ms (m ∷ valid)
+  inv-undoMove {n} {k} {c} {ms} {valid} {m} 
+                (c-inv n+suc-k≡9 1+k<9 (dist-cons v-ms m∉ms) distv 
+                (part union inter) noWin) 
+                rewrite sym (lem-plus-s n k)
+               = c-inv n+suc-k≡9 
+                       (lem-<-trans lem-≤-refl 1+k<9) 
+                       v-ms 
+                       (dist-cons distv (inter m here))
+                       (part union2 inter2)
+                       (lem-nowin-prev X ms m (proj₁ noWin) , lem-nowin-prev O ms m (proj₂ noWin)) 
+                       where
+                         union2 : (m' : Move) → m' ∈' ms ⊎ m' ∈ m ∷ valid
+                         union2 m2 with union m2
+                         union2 .m | inj₁ here      = inj₂ here
+                         union2 m2 | inj₁ (there y) = inj₁ y
+                         union2 m2 | inj₂ y         = inj₂ (there y)
+                       
+                         inter2 : (m' : Move) → m' ∈' ms → m' ∈ m ∷ valid → ⊥
+                         inter2 .m m2∈ms here         = m∉ms m2∈ms
+                         inter2 m2 m2∈ms (there x∈xs) = inter m2 (there m2∈ms) x∈xs
+
+
+  inv-addMove : {n k : ℕ} {c : Color} {moves : Moves c k} {valid : Vec Move (suc n)} 
+              → invariants moves valid → (m : Move) → (m∈valid : m ∈ valid) 
+              → ¬ WonC X (m ∷ moves) → ¬ WonC O (m ∷ moves) → k ≢ 8
+              → invariants (m ∷ moves) (vdelete m valid m∈valid)
+  inv-addMove {n} {k} {c} {ms} {valid} 
+              (c-inv n+k k<9 dist-m dist-v (part union inter) _)
+              m m∈valid ¬WonX ¬WonO k≡8
+              rewrite lem-plus-s n k
+              = c-inv n+k 
+                      (lem-≤-cases-ext (suc k) 9 k<9 (λ x → k≡8 (lem-suc-eq x))) 
+                      (dist-cons dist-m (λ x → inter m x m∈valid))
+                      (lem-delete-distinct-is-distinct m valid m∈valid dist-v) 
+                      (part (union2 m m∈valid) 
+                            (inter2 m m∈valid))
+                      (¬WonX , ¬WonO)
+                      where
+                       union2 : (m0 : Move) (m0v : m0 ∈ valid) (m' : Move) → m' ∈' m0 ∷ ms ⊎ m' ∈ vdelete m0 valid m0v
+                       union2 m0 m0v m2 with union m2
+                       union2 m0 m0v m2 | inj₁ x = inj₁ (there x)
+                       union2 m0 m0v m2 | inj₂ y' with m0 == m2
+                       union2 m0 m0v m2 | inj₂ y' | yes p rewrite p = inj₁ here
+                       union2 m0 m0v m2 | inj₂ y' | no ¬p = inj₂ (lem-delete-others m0v _==_ m2 ¬p y')
+
+                       inter2 : (m : Move)(m∈valid : m ∈ valid)(m' : Move) → m' ∈' m ∷ ms → m' ∈ vdelete m valid m∈valid → ⊥
+                       inter2 m m∈valid m2 m2∈m-ms m∈delete with m == m2
+                       inter2 m m∈valid' m2 m2∈m-ms m∈delete | yes p rewrite p = 
+                         lem-others-stay m2 valid m∈valid' dist-v m∈delete
+                       inter2 m m∈valid' .m here m∈delete | no ¬p = ¬p refl
+                       inter2 m m∈valid' m2 (there y') m∈delete | no ¬p = 
+                         inter m2 y' (lem-delete-others-inv m∈valid' _==_ m2 ¬p m∈delete)
+
+  ---------------------------
+  --  Board types - Board  --
+  ---------------------------
+
+  record Board (n : ℕ) : Set where
+    constructor c-board
+    field
+      c     : Color
+      k     : ℕ
+      moves : Moves c k
+      valid : Vec Move n
+      .inv  : invariants moves valid
+
+  module B = Board
+  open B
+
+  validMoves : {n : ℕ} → Board n → Vec Move n
+  validMoves = B.valid
 
   ---------------------------------
   --  Board types - WorkerBoard  --
   ---------------------------------
 
-
-  data WorkerBoard : {-ℕ → -}Set where
+  data WorkerBoard : Set where
     worker : {n : ℕ}                                               -- number of possible moves
-           → {c : Color}                                           -- color of pl. to move
-           → {k : ℕ}                                               -- number of made moves
-
-           → (k<9 : k < 9)
-           → (n+k : n + k ≡ 9)                                     -- reified invariant
-
-           → (moves : Moves c k)                                   -- moves made so far
-           → (valid : Vec Move n)                                  -- list of possible moves
-           → (m     : Move)                                        -- the last move
-
-           → (m-new  : m ∉' moves)
-           → (m-dist : distinct-m (m ∷ moves))
-           → (v-dist : distinct-v valid)
-           → (part   : partition moves valid)
-           → (noWin  : noWinner moves)
-
-           → WorkerBoard --(pred n)                                   -- we index by the amount of valid moves
+           → (b : Board n)
+           → (m : Move)
+           → .(m ∈ validMoves b)
+           → WorkerBoard
 
   -- Commentary:
   -- The WorkerBoard represents a game that might have been concluded **just now**.
@@ -428,90 +505,93 @@ p3 : (m' : Move) → m' ∈ m ∷ valid → m' ∈' ms → ⊥
   -- TODO: add m ∈ valid
   --       state that valid and moves form a partition of the Move type
 
-  noWinnerW : {-{n : ℕ} → -} WorkerBoard → Set
-  noWinnerW (worker k<9 n+k moves valid m m-new m-dist v-dist partit noWin) = noWinner (m ∷ moves)
+  noWinnerW : WorkerBoard → Set
+  noWinnerW (worker b m y) = noWinner (m ∷ B.moves b) 
 
-  wonW : {-{n : ℕ} → -} Color → WorkerBoard → Set
-  wonW c (worker k<9 n+k moves valid m m-new m-dist v-dist partit noWin) = WonC c (m ∷ moves)
+  wonW : Color → WorkerBoard → Set
+  wonW c (worker b m y) = WonC c (m ∷ B.moves b) 
 
   wMovesNo : WorkerBoard → ℕ
-  wMovesNo (worker {k = k} k<9 n+k moves valid m m-new m-dist v-dist partit noWin) = suc k
+  wMovesNo (worker b m y) = suc (B.k b)
 
   -- no of valid moves BEFORE the last one
 
   wValidNo : WorkerBoard → ℕ
-  wValidNo (worker {n = n} {c} {k} k<9 n+k moves valid m m-new m-dist v-dist partit noWin) = n
-
-
-  ---------------------------
-  --  Board types - Board  --
-  ---------------------------
-
-  data Board : ℕ → Set where
-    board  : {n : ℕ}                                               -- number of possible moves
-           → {c : Color}                                           -- color of pl. to move
-           → {k : ℕ}                                               -- number of made moves
-
-           → (k<9 : k < 9)
-           → (n+k : n + k ≡ 9)                                     -- reified invariant
-
-           → (moves : Moves c k)                                   -- moves made so far
-           → (valid : Vec Move n)                                  -- list of possible moves
-
-           → (m-dist : distinct-m moves)
-           → (v-dist : distinct-v valid)
-           → (part   : partition moves valid)
-           → (noWin  : noWinner moves)
-
-           → Board n                                               -- we index by the amount of valid moves
-  
+  wValidNo (worker {n} b m y) = n
 
   -----------------------------------
   --  Board types - FinishedBoard  --
   -----------------------------------
 
   data FinishedBoard : Set where
-    draw : (wb : WorkerBoard) → wMovesNo wb ≡ 9 → noWinnerW wb → FinishedBoard
-    win  : (wb : WorkerBoard) → (c : Color) → wonW c wb → FinishedBoard
+    draw : (wb : WorkerBoard) → .(wMovesNo wb ≡ 9) → .(noWinnerW wb) → FinishedBoard
+    win  : (wb : WorkerBoard) → (c : Color) → .(wonW c wb) → FinishedBoard
 
-  -----------------------
-  --  Undo operations  --
-  -----------------------
+  ------------------------
+  --  Board operations  --
+  ------------------------
+
+  isEmpty : {n : ℕ} → Board n → Bool
+  isEmpty {9} b = true
+  isEmpty {_} b = false
+
+  addMove : {n : ℕ} → (b : Board (suc n)) → (m : Move) → m ∈ validMoves b → Board n ⊎ FinishedBoard
+  addMove b m m∈valid with wonDec X (m ∷ B.moves b)
+  addMove b m m∈valid | yes wonX = inj₂ (win (worker b m m∈valid) X wonX)
+  addMove b m m∈valid | no ¬wonX with wonDec O (m ∷ B.moves b)
+  addMove b m m∈valid | no ¬wonX | yes wonO = inj₂ (win (worker b m m∈valid) O wonO)
+  addMove b m m∈valid | no ¬wonX | no ¬wonO with B.k b ≟ℕ 8
+  addMove b m m∈valid | no ¬wonX | no ¬wonO | yes drw = inj₂ (draw (worker b m m∈valid) (cong suc drw) (¬wonX , ¬wonO))
+  addMove {n} (c-board c k moves valid inv) m m∈valid | no ¬wonX | no ¬wonO | no ¬drw 
+    = inj₁ (c-board _ _ (m ∷ moves) (vdelete m valid m∈valid) (inv-addMove inv m m∈valid ¬wonX ¬wonO ¬drw )) 
 
   undoWorker : (wb : WorkerBoard) → Board (wValidNo wb)
-  undoWorker (worker k<9 n+k moves valid m m-new (dist-cons v m∉ms) v-dist partit noWin) 
-    = board k<9 n+k moves valid v v-dist partit noWin
+  undoWorker (worker b m y) = b 
 
   undoFin : FinishedBoard → ∃ Board
   undoFin (draw wb _ _) = _ , undoWorker wb
   undoFin (win  wb _ _) = _ , undoWorker wb
 
+  undo : {n : ℕ} → n < 9 → Board n → Board (suc n)
+  undo n<9 (c-board .X .0 [] valid inv) = ⊥-elim (inv-emptyBoard valid inv n<9)
+  undo n<9 (c-board .(otherColor c) .(suc k) (_∷_ {c} {k} m ms) valid inv) 
+    = c-board c k ms (m ∷ valid) (inv-undoMove inv)
 
-  undo : {n : ℕ} → Board n → Board (suc n)
-  undo (board k<9 n+k [] valid m-dist v-dist partit noWin) = {!!} -- IMPOSSIBLE; ABSURD CASE
-  undo (board {n = n} {k = suc k} k<9 n+k (m ∷ ms) valid 
-       (dist-cons v-ms m∉ms) v-dist (part all m-not-v v-not-m) noWin) rewrite sym (lem-plus-s n k)
-   = board (lem-<-trans lem-≤-refl k<9) n+k ms (m ∷ valid) v-ms 
-            (dist-cons v-dist (λ x → v-not-m m x here))
-            (part p1 p2 p3)
-            ((λ x → proj₁ noWin (lem-win-extend X ms m x)) , 
-             (λ x → proj₂ noWin (lem-win-extend O ms m x))) where
+  -----------------------
+  --  Undo operations  --
+  -----------------------
 
-              -- TODO: these will need to be extracted as lemmas
+  dist-weak : ∀ {c n m}{ms : Moves c n} → distinct-m (m ∷ ms) → distinct-m ms
+  dist-weak (dist-cons v-ms m∉ms) = v-ms
 
-              p1 : (m' : Move) → m' ∈' ms ⊎ m' ∈ m ∷ valid
-              p1 m' = {!!}
+  distinctAll : distinct-v allMoves
+  distinctAll = dist-cons (dist-cons (dist-cons (dist-cons (dist-cons (dist-cons (dist-cons (dist-cons (dist-cons dist-nil (λ ()))
+    lem1) lem2) lem3) lem4) lem5) lem6) lem7) lem8 where
+        lem1 : (x : P32 ∈ P33 ∷ []) → ⊥
+        lem1 (there ())
+                     
+        lem2 : P31 ∈ P32 ∷ P33 ∷ [] → ⊥
+        lem2 (there (there ()))
+                             
+        lem3 : P23 ∈ P31 ∷ P32 ∷ P33 ∷ [] → ⊥
+        lem3 (there (there (there ())))
+                                     
+        lem4 : P22 ∈ P23 ∷ P31 ∷ P32 ∷ P33 ∷ [] → ⊥
+        lem4 (there (there (there (there ()))))
+                                             
+        lem5 : P21 ∈ P22 ∷ P23 ∷ P31 ∷ P32 ∷ P33 ∷ [] → ⊥
+        lem5 (there (there (there (there (there ())))))
+                                                     
+        lem6 : P13 ∈ P21 ∷ P22 ∷ P23 ∷ P31 ∷ P32 ∷ P33 ∷ [] → ⊥
+        lem6 (there (there (there (there (there (there ()))))))
+                                                             
+        lem7 : P12 ∈ P13 ∷ P21 ∷ P22 ∷ P23 ∷ P31 ∷ P32 ∷ P33 ∷ [] → ⊥
+        lem7 (there (there (there (there (there (there (there ())))))))
+                                                                     
+        lem8 : P11 ∈ P12 ∷ P13 ∷ P21 ∷ P22 ∷ P23 ∷ P31 ∷ P32 ∷ P33 ∷ [] → ⊥
+        lem8 (there (there (there (there (there (there (there (there ()))))))))
 
-              p2 : (m' : Move) → m' ∈' ms → m' ∈ m ∷ valid → ⊥
-              p2 m' m'∈ms = {!!}
+  empty : Board 9
+  empty = c-board X zero [] allMoves (c-inv refl (s≤s z≤n) dist-nil distinctAll
+          (part (λ m → inj₂ (allMovesValid m)) (λ m → λ ())) ((lem-won-empty X) , (lem-won-empty O))) 
 
-              p3 : (m' : Move) → m' ∈ m ∷ valid → m' ∈' ms → ⊥
-              p3 m' m'∈mv m'∈ms = {!!}
-
--- TODOs
-
--- we use a lot of datatypes with exactly one field and lots (10+) of constructor arguments -
--- this makes out patterns very long, often unnecessarily. Should we switch to records?
--- Hey! can records be indexed?
-
--- Should we index FinishedBoard and WorkerBoard in the same way as we index the Board type?
