@@ -479,7 +479,9 @@ module GameImplementation where
       k     : ℕ
       moves : Moves c k
       valid : Vec Move n
-      .inv  : invariants moves valid
+--      .inv  : invariants moves valid
+      inv  : invariants moves valid
+
 
   module B = Board
   open B
@@ -498,7 +500,8 @@ module GameImplementation where
     worker : {n : ℕ}                                               -- number of possible moves
            → (b : Board n)
            → (m : Move)
-           → .(m ∈ validMoves b)
+--         → .(m ∈ validMoves b)
+           → (m ∈ validMoves b)
            → WorkerBoard
 
   -- Commentary:

@@ -75,3 +75,14 @@ mutual
 bestResult : {n : ℕ} → Board n → Result
 bestResult b = bestResultByColor (B.c b) (generateTree b)
 
+-------------------------------------
+--  Counting the number of leaves  --
+-------------------------------------
+
+leaves : Tree → ℕ
+leaves (leaf fin) = 1
+leaves (node b y) = sumVec y where
+  sumVec : {n : ℕ} → Vec Tree n → ℕ
+  sumVec []       = 0
+  sumVec (x ∷ xs) = leaves x + sumVec xs
+
