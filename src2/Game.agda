@@ -345,6 +345,13 @@ module GameImplementation where
   lem-nowin-prev : ∀ {c n} → (winner : Color)(ms : Moves c n) → (m : Move) → ¬ WonC winner (m ∷ ms) → ¬ WonC winner ms
   lem-nowin-prev winner ms m x x' = x (lem-win-extend winner ms m x')
     
+  -- You couldn't have just won if it wasn't your turn to play!
+  -- At least in tic-tac-toe...
+
+  lem-other-player-cant-win : ∀ {c n} → (ms : Moves c n) → (m : Move) → ¬ WonC (otherColor c) ms → ¬ WonC (otherColor c) (m ∷ ms)
+  lem-other-player-cant-win {X} ms m ¬Won-ms (wonC .(m ∷ ms) winning winning∈winPos win⊂byColor) = ¬Won-ms (wonC ms winning winning∈winPos win⊂byColor)
+  lem-other-player-cant-win {O} ms m ¬Won-ms (wonC .(m ∷ ms) winning winning∈winPos win⊂byColor) = ¬Won-ms (wonC ms winning winning∈winPos win⊂byColor)
+
   {- BASE won lem-won-empty lem-nowin-prev lem-win-extend -}
 
 
@@ -362,6 +369,55 @@ module GameImplementation where
   ... | noWinningPosition = no lem where
     lem : (x : WonC cand ms) → ⊥
     lem (wonC .ms winning y y') = noWinningPosition (winning , y , y')
+
+  ----------------------------------------------
+  --  A view for checking the current status  --
+  ----------------------------------------------
+
+  data GameStatus : ∀ {c n} → Moves c n → Set where
+
+    stWon        : ∀ {c n} {ms : Moves c n} {m : Move}                  
+                 →   WonC c              (m ∷ ms)
+                 → ¬ WonC (otherColor c) (m ∷ ms)
+                 → GameStatus (m ∷ ms)
+
+    stDraw       : ∀ {c n} {ms : Moves c n} {m : Move}                    
+                 → noWinner (m ∷ ms)
+                 → n ≡ 8
+                 → GameStatus (m ∷ ms)
+
+    stInProgress : ∀ {c n} {ms : Moves c n} {m : Move}                    
+                 → noWinner (m ∷ ms)
+                 → n ≢ 8
+                 → GameStatus (m ∷ ms)
+
+  checkGameStatus : ∀ {c n} (ms : Moves c n) (m : Move) → noWinner ms → n < 9 → GameStatus (m ∷ ms)
+  checkGameStatus {c} ms m (¬WinX , ¬WinO) n<9 with wonDec c (m ∷ ms)
+
+  -- A) current player has won
+
+  checkGameStatus {X} ms m (¬WinX , ¬WinO) n<9 | yes c-won 
+    = stWon c-won (lem-other-player-cant-win ms m ¬WinO)
+  checkGameStatus {O} ms m (¬WinX , ¬WinO) n<9 | yes c-won 
+    = stWon c-won (lem-other-player-cant-win ms m ¬WinX)
+
+  -- B) current players has not won. Is it a draw?
+
+  checkGameStatus {n = n} ms m (¬WinX , ¬WinO) n<9 | no ¬c-won with n ≟ℕ 8
+
+  -- yes, it's a draw
+
+  checkGameStatus {X} ms m (¬WinX , ¬WinO) n<9 | no ¬c-won | yes n≡8 
+    = stDraw (¬c-won , lem-other-player-cant-win ms m ¬WinO) n≡8
+  checkGameStatus {O} ms m (¬WinX , ¬WinO) n<9 | no ¬c-won | yes n≡8 
+    = stDraw (lem-other-player-cant-win ms m ¬WinX , ¬c-won) n≡8
+
+  -- no, the game continues
+
+  checkGameStatus {X} {n} ms m (¬WinX , ¬WinO) n<9 | no ¬c-won | no ¬n≡8 
+    = stInProgress (¬c-won , lem-other-player-cant-win ms m ¬WinO) ¬n≡8
+  checkGameStatus {O} {n} ms m (¬WinX , ¬WinO) n<9 | no ¬c-won | no ¬n≡8 
+    = stInProgress (lem-other-player-cant-win ms m ¬WinX , ¬c-won) ¬n≡8
 
   ------------------------------------------------------
   --  A relation that forces every move to be unique  --
@@ -481,7 +537,7 @@ module GameImplementation where
       noPlayed      : ℕ
       playedMoves   : Moves currentPlayer noPlayed
       possibleMoves : Vec Move n
-      .inv          : invariants playedMoves possibleMoves     
+      inv           : invariants playedMoves possibleMoves     
 
   open Board
   module B = Board
@@ -544,7 +600,7 @@ module GameImplementation where
   isEmpty : {n : ℕ} → Board n → Bool
   isEmpty {9} b = true
   isEmpty {_} b = false
-
+{-
   addMove : {n : ℕ} → (b : Board (suc n)) → (m : Move) → m ∈ possibleMoves b → Board n ⊎ FinishedBoard
   addMove b m m∈possible with wonDec X (m ∷ B.playedMoves b)
   addMove b m m∈possible | yes wonX = inj₂ (win (worker b m m∈possible) X wonX)
@@ -559,6 +615,21 @@ module GameImplementation where
     = inj₁ (c-board _ _ (m ∷ playedMoves) 
                         (vdelete m possible m∈possible) 
                         (inv-addMove inv m m∈possible ¬wonX ¬wonO ¬drw )) 
+-}
+  addMove : {n : ℕ} → (b : Board (suc n)) → (m : Move) → m ∈ possibleMoves b → Board n ⊎ FinishedBoard
+  addMove b m m∈possible with checkGameStatus (B.playedMoves b) m (I.noWin (B.inv b)) (I.k<9 (B.inv b))
+
+  addMove b m m∈possible | stWon winner loser 
+    = inj₂ (win (worker b m m∈possible) (B.currentPlayer b) winner)
+
+  addMove b m m∈possible | stDraw noWin k≡8 
+    = inj₂ (draw (worker b m m∈possible) (cong suc k≡8) noWin)
+
+  addMove b m m∈possible | stInProgress (¬WonX , ¬WonO) k≢8 
+    = inj₁ (c-board _ _ (m ∷ B.playedMoves b) 
+                        (vdelete m (B.possibleMoves b) m∈possible) 
+                        (inv-addMove (B.inv b) m m∈possible 
+                                     ¬WonX ¬WonO k≢8))
 
 
   undoWorker : (wb : WorkerBoard) → Board (wPossibleNo wb)
