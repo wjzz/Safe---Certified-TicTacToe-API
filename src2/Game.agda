@@ -378,27 +378,29 @@ module GameImplementation where
   --  A relation that states that {made}moves and valid{Moves} form a partition  --
   ---------------------------------------------------------------------------------
 
+  -- TODO: make this into a record
+
   data partition : {n k : ℕ} {c : Color} → Moves c k → Vec Move n → Set where
     part : {n k : ℕ} {c : Color} 
-         → {moves   : Moves c k}
-         → {valid   : Vec Move n}
-         → (union     : ∀ (m : Move) → m ∈' moves ⊎ m ∈ valid)
-         → (inter : ∀ (m : Move) → m ∈' moves → m ∈ valid → ⊥)
-         → partition moves valid
+         → {played   : Moves c k}
+         → {possible : Vec Move n}
+         → (union    : ∀ (m : Move) → m ∈' played ⊎ m ∈ possible)
+         → (inter    : ∀ (m : Move) → m ∈' played → m ∈ possible → ⊥)
+         → partition played possible
 
   ---------------------------------------------------------
   --  A datatype for storing proofs of board invariants  --
   ---------------------------------------------------------
 
-  record invariants {n k : ℕ} {c : Color} (moves : Moves c k) (valid : Vec Move n) : Set where
+  record invariants {n k : ℕ} {c : Color} (played : Moves c k) (possible : Vec Move n) : Set where
    constructor c-inv
    field
-     n+k       : n + k ≡ 9
-     k<9       : k < 9
-     distMoves : distinct-m moves
-     distValid : distinct-v valid
-     partit    : partition moves valid
-     noWin     : noWinner moves
+     n+k          : n + k ≡ 9
+     k<9          : k < 9
+     distPlayed   : distinct-m played
+     distPossible : distinct-v possible
+     partit       : partition  played possible
+     noWin        : noWinner   played
 
   module I = invariants
   open I
@@ -413,9 +415,9 @@ module GameImplementation where
   inv-emptyBoard : {n : ℕ} → (v : Vec Move n) → invariants [] v → ¬ n < 9
   inv-emptyBoard {n} v (c-inv n≡9 y' y0 y1 y2 y3) n<9 rewrite lem-plus-n-0 n | n≡9 = ten-nine n<9
 
-  inv-undoMove : {n k : ℕ} {c : Color} {ms : Moves c k} {valid : Vec Move n} {m : Move} 
-               → invariants (m ∷ ms) valid → invariants ms (m ∷ valid)
-  inv-undoMove {n} {k} {c} {ms} {valid} {m} 
+  inv-undoMove : {n k : ℕ} {c : Color} {ms : Moves c k} {possible : Vec Move n} {m : Move} 
+               → invariants (m ∷ ms) possible → invariants ms (m ∷ possible)
+  inv-undoMove {n} {k} {c} {ms} {possible} {m} 
                 (c-inv n+suc-k≡9 1+k<9 (dist-cons v-ms m∉ms) distv 
                 (part union inter) noWin) 
                 rewrite sym (lem-plus-s n k)
@@ -426,47 +428,47 @@ module GameImplementation where
                        (part union2 inter2)
                        (lem-nowin-prev X ms m (proj₁ noWin) , lem-nowin-prev O ms m (proj₂ noWin)) 
                        where
-                         union2 : (m' : Move) → m' ∈' ms ⊎ m' ∈ m ∷ valid
+                         union2 : (m' : Move) → m' ∈' ms ⊎ m' ∈ m ∷ possible
                          union2 m2 with union m2
                          union2 .m | inj₁ here      = inj₂ here
                          union2 m2 | inj₁ (there y) = inj₁ y
                          union2 m2 | inj₂ y         = inj₂ (there y)
                        
-                         inter2 : (m' : Move) → m' ∈' ms → m' ∈ m ∷ valid → ⊥
+                         inter2 : (m' : Move) → m' ∈' ms → m' ∈ m ∷ possible → ⊥
                          inter2 .m m2∈ms here         = m∉ms m2∈ms
                          inter2 m2 m2∈ms (there x∈xs) = inter m2 (there m2∈ms) x∈xs
 
 
-  inv-addMove : {n k : ℕ} {c : Color} {moves : Moves c k} {valid : Vec Move (suc n)} 
-              → invariants moves valid → (m : Move) → (m∈valid : m ∈ valid) 
-              → ¬ WonC X (m ∷ moves) → ¬ WonC O (m ∷ moves) → k ≢ 8
-              → invariants (m ∷ moves) (vdelete m valid m∈valid)
-  inv-addMove {n} {k} {c} {ms} {valid} 
+  inv-addMove : {n k : ℕ} {c : Color} {playedMoves : Moves c k} {possible : Vec Move (suc n)} 
+              → invariants playedMoves possible → (m : Move) → (m∈possible : m ∈ possible) 
+              → ¬ WonC X (m ∷ playedMoves) → ¬ WonC O (m ∷ playedMoves) → k ≢ 8
+              → invariants (m ∷ playedMoves) (vdelete m possible m∈possible)
+  inv-addMove {n} {k} {c} {ms} {possible} 
               (c-inv n+k k<9 dist-m dist-v (part union inter) _)
-              m m∈valid ¬WonX ¬WonO k≡8
+              m m∈possible ¬WonX ¬WonO k≡8
               rewrite lem-plus-s n k
               = c-inv n+k 
                       (lem-≤-cases-ext (suc k) 9 k<9 (λ x → k≡8 (lem-suc-eq x))) 
-                      (dist-cons dist-m (λ x → inter m x m∈valid))
-                      (lem-delete-distinct-is-distinct m valid m∈valid dist-v) 
-                      (part (union2 m m∈valid) 
-                            (inter2 m m∈valid))
+                      (dist-cons dist-m (λ x → inter m x m∈possible))
+                      (lem-delete-distinct-is-distinct m possible m∈possible dist-v) 
+                      (part (union2 m m∈possible) 
+                            (inter2 m m∈possible))
                       (¬WonX , ¬WonO)
                       where
-                       union2 : (m0 : Move) (m0v : m0 ∈ valid) (m' : Move) → m' ∈' m0 ∷ ms ⊎ m' ∈ vdelete m0 valid m0v
+                       union2 : (m0 : Move) (m0v : m0 ∈ possible) (m' : Move) → m' ∈' m0 ∷ ms ⊎ m' ∈ vdelete m0 possible m0v
                        union2 m0 m0v m2 with union m2
                        union2 m0 m0v m2 | inj₁ x = inj₁ (there x)
                        union2 m0 m0v m2 | inj₂ y' with m0 == m2
                        union2 m0 m0v m2 | inj₂ y' | yes p rewrite p = inj₁ here
                        union2 m0 m0v m2 | inj₂ y' | no ¬p = inj₂ (lem-delete-others m0v _==_ m2 ¬p y')
 
-                       inter2 : (m : Move)(m∈valid : m ∈ valid)(m' : Move) → m' ∈' m ∷ ms → m' ∈ vdelete m valid m∈valid → ⊥
-                       inter2 m m∈valid m2 m2∈m-ms m∈delete with m == m2
-                       inter2 m m∈valid' m2 m2∈m-ms m∈delete | yes p rewrite p = 
-                         lem-others-stay m2 valid m∈valid' dist-v m∈delete
-                       inter2 m m∈valid' .m here m∈delete | no ¬p = ¬p refl
-                       inter2 m m∈valid' m2 (there y') m∈delete | no ¬p = 
-                         inter m2 y' (lem-delete-others-inv m∈valid' _==_ m2 ¬p m∈delete)
+                       inter2 : (m : Move)(m∈possible : m ∈ possible)(m' : Move) → m' ∈' m ∷ ms → m' ∈ vdelete m possible m∈possible → ⊥
+                       inter2 m m∈possible m2 m2∈m-ms m∈delete with m == m2
+                       inter2 m m∈possible' m2 m2∈m-ms m∈delete | yes p rewrite p = 
+                         lem-others-stay m2 possible m∈possible' dist-v m∈delete
+                       inter2 m m∈possible' .m here m∈delete | no ¬p = ¬p refl
+                       inter2 m m∈possible' m2 (there y') m∈delete | no ¬p = 
+                         inter m2 y' (lem-delete-others-inv m∈possible' _==_ m2 ¬p m∈delete)
 
   ---------------------------
   --  Board types - Board  --
@@ -475,57 +477,53 @@ module GameImplementation where
   record Board (n : ℕ) : Set where
     constructor c-board
     field
-      c     : Color
-      k     : ℕ
-      moves : Moves c k
-      valid : Vec Move n
---      .inv  : invariants moves valid
-      inv  : invariants moves valid
+      currentPlayer : Color
+      noPlayed      : ℕ
+      playedMoves   : Moves currentPlayer noPlayed
+      possibleMoves : Vec Move n
+      .inv          : invariants playedMoves possibleMoves     
 
-
+  open Board
   module B = Board
-  open B
-
-  validMoves : {n : ℕ} → Board n → Vec Move n
-  validMoves = B.valid
+--  open B
 
   absurdBoard : Board 0 → ⊥
-  absurdBoard (c-board c k moves valid (c-inv y y' y0 y1 y2 y3)) rewrite y = ten-nine y'
+  absurdBoard (c-board c k playedMoves possible (c-inv y y' y0 y1 y2 y3)) rewrite y = ten-nine y'
 
   ---------------------------------
   --  Board types - WorkerBoard  --
   ---------------------------------
 
   data WorkerBoard : Set where
-    worker : {n : ℕ}                                               -- number of possible moves
+    worker : {n : ℕ}                                               -- number of possible playedMoves
            → (b : Board n)
            → (m : Move)
---         → .(m ∈ validMoves b)
-           → (m ∈ validMoves b)
+           → .(m ∈ possibleMoves b)
+--           → (m ∈ possibleMoves b)
            → WorkerBoard
 
   -- Commentary:
   -- The WorkerBoard represents a game that might have been concluded **just now**.
 
-  -- Q: Why do we store the last move independently of moves (and valid)?
+  -- Q: Why do we store the last move independently of moves (and possible)?
   -- A: This makes the task of implementing the undo operation trivial - all pieces are assembled.
 
-  -- TODO: add m ∈ valid
-  --       state that valid and moves form a partition of the Move type
+  -- TODO: add m ∈ possible
+  --       state that possible and moves form a partition of the Move type
 
   noWinnerW : WorkerBoard → Set
-  noWinnerW (worker b m y) = noWinner (m ∷ B.moves b) 
+  noWinnerW (worker b m y) = noWinner (m ∷ B.playedMoves b) 
 
   wonW : Color → WorkerBoard → Set
-  wonW c (worker b m y) = WonC c (m ∷ B.moves b) 
+  wonW c (worker b m y) = WonC c (m ∷ B.playedMoves b) 
 
   wMovesNo : WorkerBoard → ℕ
-  wMovesNo (worker b m y) = suc (B.k b)
+  wMovesNo (worker b m y) = suc (B.noPlayed b)
 
-  -- no of valid moves BEFORE the last one
+  -- no of possible moves BEFORE the last one
 
-  wValidNo : WorkerBoard → ℕ
-  wValidNo (worker {n} b m y) = n
+  wPossibleNo : WorkerBoard → ℕ
+  wPossibleNo (worker {n} b m y) = n
 
   -----------------------------------
   --  Board types - FinishedBoard  --
@@ -547,27 +545,36 @@ module GameImplementation where
   isEmpty {9} b = true
   isEmpty {_} b = false
 
-  addMove : {n : ℕ} → (b : Board (suc n)) → (m : Move) → m ∈ validMoves b → Board n ⊎ FinishedBoard
-  addMove b m m∈valid with wonDec X (m ∷ B.moves b)
-  addMove b m m∈valid | yes wonX = inj₂ (win (worker b m m∈valid) X wonX)
-  addMove b m m∈valid | no ¬wonX with wonDec O (m ∷ B.moves b)
-  addMove b m m∈valid | no ¬wonX | yes wonO = inj₂ (win (worker b m m∈valid) O wonO)
-  addMove b m m∈valid | no ¬wonX | no ¬wonO with B.k b ≟ℕ 8
-  addMove b m m∈valid | no ¬wonX | no ¬wonO | yes drw = inj₂ (draw (worker b m m∈valid) (cong suc drw) (¬wonX , ¬wonO))
-  addMove {n} (c-board c k moves valid inv) m m∈valid | no ¬wonX | no ¬wonO | no ¬drw 
-    = inj₁ (c-board _ _ (m ∷ moves) (vdelete m valid m∈valid) (inv-addMove inv m m∈valid ¬wonX ¬wonO ¬drw )) 
+  addMove : {n : ℕ} → (b : Board (suc n)) → (m : Move) → m ∈ possibleMoves b → Board n ⊎ FinishedBoard
+  addMove b m m∈possible with wonDec X (m ∷ B.playedMoves b)
+  addMove b m m∈possible | yes wonX = inj₂ (win (worker b m m∈possible) X wonX)
+  addMove b m m∈possible | no ¬wonX with wonDec O (m ∷ B.playedMoves b)
+  addMove b m m∈possible | no ¬wonX | yes wonO = inj₂ (win (worker b m m∈possible) O wonO)
+  addMove b m m∈possible | no ¬wonX | no ¬wonO with B.noPlayed b ≟ℕ 8
 
-  undoWorker : (wb : WorkerBoard) → Board (wValidNo wb)
-  undoWorker (worker b m y) = b 
+  addMove b m m∈possible | no ¬wonX | no ¬wonO | yes drw 
+    = inj₂ (draw (worker b m m∈possible) (cong suc drw) (¬wonX , ¬wonO))
+
+  addMove {n} (c-board c k playedMoves possible inv) m m∈possible | no ¬wonX | no ¬wonO | no ¬drw 
+    = inj₁ (c-board _ _ (m ∷ playedMoves) 
+                        (vdelete m possible m∈possible) 
+                        (inv-addMove inv m m∈possible ¬wonX ¬wonO ¬drw )) 
+
+
+  undoWorker : (wb : WorkerBoard) → Board (wPossibleNo wb)
+  undoWorker (worker b _ _) = b 
 
   undoFin : FinishedBoard → ∃ Board
   undoFin (draw wb _ _) = _ , undoWorker wb
   undoFin (win  wb _ _) = _ , undoWorker wb
 
   undo : {n : ℕ} → n < 9 → Board n → Board (suc n)
-  undo n<9 (c-board .X .0 [] valid inv) = ⊥-elim (inv-emptyBoard valid inv n<9)
-  undo n<9 (c-board .(otherColor c) .(suc k) (_∷_ {c} {k} m ms) valid inv) 
-    = c-board c k ms (m ∷ valid) (inv-undoMove inv)
+
+  undo n<9 (c-board .X .0 [] possible inv) 
+    = ⊥-elim (inv-emptyBoard possible inv n<9)
+
+  undo n<9 (c-board .(otherColor c) .(suc k) (_∷_ {c} {k} m ms) possible inv) 
+    = c-board c k ms (m ∷ possible) (inv-undoMove inv)
 
   -----------------------
   --  Undo operations  --

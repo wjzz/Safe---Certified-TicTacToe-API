@@ -51,4 +51,7 @@ postulate
 
 
 main : IO Unit
-main = putStrLn (showResult (bestResult empty)) >>= (λ x → putStrLn (primShowInteger (primNatToInteger (leaves (generateTree empty)))))
+main = --putStrLn (showResult (bestResult empty)) >>= (λ x → 
+       putStrLn (showResult (bestResultVec empty)) -->>= (λ x → 
+       --putStrLn (primShowInteger (primNatToInteger (leaves (generateTree empty))))))
+
